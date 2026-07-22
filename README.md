@@ -30,14 +30,36 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:5173](http://localhost:5173).
 
 For a production build:
 
 ```bash
 npm run build
-npm run start
+npm run preview
 ```
+
+The production output is written to `dist/`. It contains only static HTML, CSS, JavaScript, and image files; no Node.js server is required after the build.
+
+## Automatic GitHub Pages deployment
+
+The repository includes `.github/workflows/deploy-pages.yml`. Every push to `main` or `master` installs dependencies, runs the checks, builds the static site, and deploys `dist/` to GitHub Pages.
+
+After pushing the repository to GitHub:
+
+1. Open **Settings → Pages** in the GitHub repository.
+2. Set **Source** to **GitHub Actions**.
+3. Push to `main` or `master`, or run the workflow manually from the **Actions** tab.
+
+The Vite build uses relative asset paths, so it works both at a domain root and under a GitHub Pages repository path.
+
+### Other static hosts
+
+For Netlify, Cloudflare Pages, Vercel static hosting, S3, or similar services, use:
+
+- Build command: `npm run build`
+- Publish directory: `dist`
+- Required server functions: none
 
 ## Use
 
@@ -69,17 +91,20 @@ The shared player always uses the longer duration. If the selected source has al
 ## Project structure
 
 ```text
-app/
-  layout.tsx       Metadata and social sharing configuration
-  page.tsx         Audio engine and complete user interface
-  globals.css      Responsive visual system
+index.html         Static document and social metadata
+src/
+  App.tsx          Audio engine and complete user interface
+  main.tsx         Browser entry point
+  index.css        Responsive visual system
 public/
   og.png           Social preview image
 tests/
-  rendered-html.test.mjs
+  static-build.test.mjs
+.github/workflows/
+  deploy-pages.yml Automatic GitHub Pages deployment
 ```
 
-The app uses React, vinext/Next-compatible APIs, the Web Audio API, and Lucide icons. It has no backend, account system, database, or upload service.
+The app uses React, Vite, the Web Audio API, and Lucide icons. It has no server runtime, backend, account system, database, or upload service.
 
 ## Quality checks
 
@@ -87,6 +112,7 @@ The app uses React, vinext/Next-compatible APIs, the Web Audio API, and Lucide i
 npm run build
 npm run lint
 npm test
+npm run check
 ```
 
 ## Privacy
