@@ -121,4 +121,4 @@ Object URLs and decoded buffers stay in the current browser tab. Audiff revokes 
 
 ## License
 
-Add the license that fits your repository before distributing the project publicly.
+Audiff is open-source software licensed under the [MIT License](LICENSE). You may use, copy, modify, distribute, and privately or commercially deploy it, provided the copyright and license notice are retained.
