@@ -73,3 +73,14 @@ test("aligns the scrubber, playhead, and duration markers with the waveform", as
   assert.match(styles, /--timeline-label-width: 28px/u);
   assert.match(styles, /\.timeline-track[\s\S]*inset: 0 0 0 var\(--timeline-label-width\)/u);
 });
+
+test("centers the transport icon inside the play button", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(new URL("src/App.tsx", root), "utf8"),
+    readFile(new URL("src/index.css", root), "utf8"),
+  ]);
+
+  assert.match(app, /className="play-icon"/u);
+  assert.match(styles, /\.play-button \{[\s\S]*padding: 0;/u);
+  assert.match(styles, /\.play-icon \{ transform: translateX\(1px\); \}/u);
+});

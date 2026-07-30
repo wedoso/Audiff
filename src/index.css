@@ -533,7 +533,7 @@ button:focus-visible, input:focus-visible, [role="button"]:focus-visible, a:focu
   margin: 0 4px;
   display: grid;
   place-items: center;
-  padding-left: 2px;
+  padding: 0;
   border: 0;
   border-radius: 50%;
   background: var(--ink);
@@ -541,6 +541,7 @@ button:focus-visible, input:focus-visible, [role="button"]:focus-visible, a:focu
   cursor: pointer;
   transition: transform .15s ease, background .15s ease;
 }
+.play-icon { transform: translateX(1px); }
 .play-button:hover:not(:disabled) { transform: scale(1.04); background: var(--green); }
 
 .ab-switch {

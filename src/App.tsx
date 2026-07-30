@@ -739,7 +739,7 @@ export default function Home() {
           <div className="controls">
             <div className="transport-controls">
               <button className="control-button" type="button" title="Back 5 seconds" aria-label="Back 5 seconds" disabled={!maxDuration} onClick={() => void seekTo(currentTime - 5)}><Rewind size={18} fill="currentColor" /></button>
-              <button className="play-button" type="button" aria-label={isPlaying ? "Pause" : "Play"} disabled={!maxDuration} onClick={() => void togglePlay()}>{isPlaying ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}</button>
+              <button className="play-button" type="button" aria-label={isPlaying ? "Pause" : "Play"} disabled={!maxDuration} onClick={() => void togglePlay()}>{isPlaying ? <Pause size={22} fill="currentColor" /> : <Play className="play-icon" size={22} fill="currentColor" />}</button>
               <button className="control-button" type="button" title="Forward 5 seconds" aria-label="Forward 5 seconds" disabled={!maxDuration} onClick={() => void seekTo(currentTime + 5)}><FastForward size={18} fill="currentColor" /></button>
               <button className={`control-button ${loop ? "selected" : ""}`} type="button" title="Loop timeline" aria-label="Loop timeline" aria-pressed={loop} disabled={!maxDuration} onClick={() => setLoop(!loop)}><Repeat2 size={18} /></button>
             </div>
