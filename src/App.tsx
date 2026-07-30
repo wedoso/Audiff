@@ -11,6 +11,7 @@ import {
   Repeat2,
   Rewind,
   ShieldCheck,
+  Trash2,
   Upload,
   Volume2,
   X,
@@ -228,14 +229,31 @@ export default function Home() {
 
   async function switchSource(nextActive: 0 | 1) {
     if (slotsRef.current[nextActive].status !== "ready") return;
+    const previousActive = activeRef.current;
     const referenceTime = getReferenceTime();
     const target = audioAt(nextActive);
     if (target && referenceTime < slotsRef.current[nextActive].duration) {
       if (Math.abs(target.currentTime - referenceTime) > 0.018) target.currentTime = referenceTime;
     }
+    await ensureAudioGraph();
+
+    if (
+      playingRef.current &&
+      target &&
+      target.paused &&
+      referenceTime < slotsRef.current[nextActive].duration - 0.005
+    ) {
+      try {
+        await target.play();
+      } catch {
+        applySourceGain(previousActive);
+        setMessage(`Audio ${nextActive === 0 ? "A" : "B"} could not start. Try pressing play again.`);
+        return;
+      }
+    }
+
     activeRef.current = nextActive;
     setActive(nextActive);
-    await ensureAudioGraph();
     applySourceGain(nextActive);
     setMessage(`Listening to ${nextActive === 0 ? "A" : "B"}`);
     window.setTimeout(() => setMessage(""), 900);
@@ -243,23 +261,38 @@ export default function Home() {
 
   async function playFrom(time: number) {
     await ensureAudioGraph();
-    const promises: Promise<void>[] = [];
+    const attempts: { index: 0 | 1; promise: Promise<void> }[] = [];
     ([0, 1] as const).forEach((index) => {
       const slot = slotsRef.current[index];
       const audio = audioAt(index);
       if (!audio || slot.status !== "ready") return;
       if (time < slot.duration - 0.005) {
         if (Math.abs(audio.currentTime - time) > 0.015) audio.currentTime = time;
-        promises.push(audio.play());
+        attempts.push({ index, promise: audio.play() });
       } else {
         audio.pause();
       }
     });
-    const results = await Promise.allSettled(promises);
+    const results = await Promise.allSettled(attempts.map(({ promise }) => promise));
     if (results.length && results.every((result) => result.status === "rejected")) {
       setMessage("Playback was blocked. Try pressing play again.");
       return;
     }
+
+    const activeAttempt = attempts.findIndex(({ index }) => index === activeRef.current);
+    if (activeAttempt >= 0 && results[activeAttempt]?.status === "rejected") {
+      const fallbackAttempt = results.findIndex((result) => result.status === "fulfilled");
+      if (fallbackAttempt >= 0) {
+        const fallback = attempts[fallbackAttempt].index;
+        activeRef.current = fallback;
+        setActive(fallback);
+        applySourceGain(fallback);
+        setMessage(
+          `Audio ${attempts[activeAttempt].index === 0 ? "A" : "B"} could not start. Playing Audio ${fallback === 0 ? "A" : "B"} instead.`,
+        );
+      }
+    }
+
     playingRef.current = true;
     setIsPlaying(true);
   }
@@ -324,6 +357,29 @@ export default function Home() {
       currentTimeRef.current = 0;
       setCurrentTime(0);
     }
+  }
+
+  function clearBothFiles() {
+    ([0, 1] as const).forEach((index) => {
+      const slot = slotsRef.current[index];
+      const audio = audioAt(index);
+      if (audio) {
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+      }
+      if (slot.url) URL.revokeObjectURL(slot.url);
+    });
+
+    updateSlots([{ ...EMPTY_SLOT }, { ...EMPTY_SLOT }]);
+    activeRef.current = 0;
+    setActive(0);
+    playingRef.current = false;
+    setIsPlaying(false);
+    currentTimeRef.current = 0;
+    setCurrentTime(0);
+    applySourceGain(0);
+    setMessage("");
   }
 
   async function loadFile(file: File, index: 0 | 1) {
@@ -588,6 +644,15 @@ export default function Home() {
             );
           })}
         </div>
+
+        {slots.some((slot) => slot.status !== "empty") && (
+          <div className="file-toolbar">
+            <button type="button" className="clear-files-button" onClick={clearBothFiles}>
+              <Trash2 size={14} />
+              Clear both tracks
+            </button>
+          </div>
+        )}
 
         {durationDelta > 0.05 && (
           <div className="duration-alert" role="status">

@@ -33,3 +33,19 @@ test("contains no server runtime or backend dependency", async () => {
   await assert.rejects(access(new URL("worker", root)));
   await assert.rejects(access(new URL(".openai/hosting.json", root)));
 });
+
+test("restarts a selected track that became ready after playback began", async () => {
+  const app = await readFile(new URL("src/App.tsx", root), "utf8");
+
+  assert.match(app, /playingRef\.current[\s\S]*target\.paused[\s\S]*await target\.play\(\)/u);
+  assert.match(app, /attempts\.findIndex\(\(\{ index \}\) => index === activeRef\.current\)/u);
+  assert.match(app, /applySourceGain\(fallback\)/u);
+});
+
+test("can clear both tracks and reset playback", async () => {
+  const app = await readFile(new URL("src/App.tsx", root), "utf8");
+
+  assert.match(app, /function clearBothFiles\(\)/u);
+  assert.match(app, /updateSlots\(\[\{ \.\.\.EMPTY_SLOT \}, \{ \.\.\.EMPTY_SLOT \}\]\)/u);
+  assert.match(app, /Clear both tracks/u);
+});
