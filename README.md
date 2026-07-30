@@ -6,9 +6,10 @@ Audiff is a private, browser-based A/B audio comparison tool. Load two versions 
 
 ## What it does
 
-- Keeps both files playing on one synchronized timeline.
+- Decodes both files locally and starts them on one sample-accurate Web Audio clock.
 - Switches the audible source with an 18 ms crossfade to avoid clicks without masking meaningful differences.
-- Continuously corrects playback drift greater than 40 ms.
+- Switches gain only—never seeks or changes playback speed during A/B comparison.
+- Shows real file-reading progress and a clear decoding state before playback is ready.
 - Uses the longer file for the shared timeline when durations differ.
 - Shows exactly where a shorter file ends and lets the longer file continue.
 - Generates lightweight waveform previews in the browser.
@@ -80,9 +81,9 @@ For Netlify, Cloudflare Pages, Vercel static hosting, S3, or similar services, u
 
 ## Supported files
 
-Compatibility depends on the browser. Common formats such as WAV, MP3, M4A/AAC, FLAC, OGG, Opus, WebM audio, and AIFF are accepted when the browser can decode them.
+Compatibility depends on the browser. Common formats such as WAV, MP3, M4A/AAC, FLAC, OGG, Opus, WebM audio, and AIFF are accepted when the browser's Web Audio decoder supports them.
 
-Waveform generation is skipped for files larger than 300 MB to avoid excessive memory use; playback still works. Extremely long or lossless files may take a moment to analyze.
+Files are fully decoded in browser memory so both tracks can share one exact clock. Files larger than 300 MB are rejected to protect the tab from excessive memory use. Long or lossless files may take a moment to decode.
 
 ## Duration mismatch behavior
 
@@ -117,7 +118,7 @@ npm run check
 
 ## Privacy
 
-Object URLs and decoded buffers stay in the current browser tab. Audiff revokes object URLs when files are removed or the page closes. No analytics, cookies, network upload, or persistent storage is used.
+File data and decoded buffers stay in the current browser tab and are released when tracks are removed or the page closes. No analytics, cookies, network upload, or persistent storage is used.
 
 ## License
 

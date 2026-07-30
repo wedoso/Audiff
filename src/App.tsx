@@ -27,32 +27,36 @@ import {
 } from "react";
 
 type SlotStatus = "empty" | "loading" | "ready" | "error";
+type LoadStage = "idle" | "reading" | "decoding";
 
 type AudioSlot = {
   file: File | null;
-  url: string;
   name: string;
   size: number;
   duration: number;
   peaks: number[];
   status: SlotStatus;
+  loadStage: LoadStage;
+  loadProgress: number;
   error: string;
 };
 
 const EMPTY_SLOT: AudioSlot = {
   file: null,
-  url: "",
   name: "",
   size: 0,
   duration: 0,
   peaks: [],
   status: "empty",
+  loadStage: "idle",
+  loadProgress: 0,
   error: "",
 };
 
 const SUPPORTED_AUDIO = /\.(mp3|wav|wave|m4a|aac|ogg|oga|flac|opus|webm|aiff|aif)$/i;
 const FADE_SECONDS = 0.018;
-const DRIFT_TOLERANCE = 0.04;
+const SOURCE_LEAD_SECONDS = 0.025;
+const MAX_FILE_BYTES = 300 * 1024 * 1024;
 
 function formatTime(seconds: number, precise = false) {
   if (!Number.isFinite(seconds) || seconds < 0) return precise ? "00:00.000" : "00:00";
@@ -71,34 +75,25 @@ function formatSize(bytes: number) {
   return `${(bytes / 1024 ** unit).toFixed(unit > 1 ? 1 : 0)} ${units[unit]}`;
 }
 
-async function makePeaks(file: File, count = 112): Promise<number[]> {
-  const AudioContextCtor = window.AudioContext;
-  if (!AudioContextCtor || file.size > 300 * 1024 * 1024) return [];
+function makePeaks(buffer: AudioBuffer, count = 112): number[] {
+  const peaks = new Array(count).fill(0);
+  const channels = Math.min(buffer.numberOfChannels, 2);
+  const block = Math.max(1, Math.floor(buffer.length / count));
 
-  const context = new AudioContextCtor();
-  try {
-    const buffer = await context.decodeAudioData(await file.arrayBuffer());
-    const peaks = new Array(count).fill(0);
-    const channels = Math.min(buffer.numberOfChannels, 2);
-    const block = Math.max(1, Math.floor(buffer.length / count));
-
-    for (let index = 0; index < count; index += 1) {
-      const start = index * block;
-      const end = Math.min(buffer.length, start + block);
-      let max = 0;
-      const stride = Math.max(1, Math.floor((end - start) / 180));
-      for (let channel = 0; channel < channels; channel += 1) {
-        const data = buffer.getChannelData(channel);
-        for (let sample = start; sample < end; sample += stride) {
-          max = Math.max(max, Math.abs(data[sample]));
-        }
+  for (let index = 0; index < count; index += 1) {
+    const start = index * block;
+    const end = Math.min(buffer.length, start + block);
+    let max = 0;
+    const stride = Math.max(1, Math.floor((end - start) / 180));
+    for (let channel = 0; channel < channels; channel += 1) {
+      const data = buffer.getChannelData(channel);
+      for (let sample = start; sample < end; sample += stride) {
+        max = Math.max(max, Math.abs(data[sample]));
       }
-      peaks[index] = Math.max(0.07, Math.min(1, Math.sqrt(max)));
     }
-    return peaks;
-  } finally {
-    await context.close();
+    peaks[index] = Math.max(0.07, Math.min(1, Math.sqrt(max)));
   }
+  return peaks;
 }
 
 function Waveform({ peaks, label }: { peaks: number[]; label: string }) {
@@ -130,25 +125,25 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [dragging, setDragging] = useState<0 | 1 | null>(null);
 
-  const audioARef = useRef<HTMLAudioElement>(null);
-  const audioBRef = useRef<HTMLAudioElement>(null);
   const inputARef = useRef<HTMLInputElement>(null);
   const inputBRef = useRef<HTMLInputElement>(null);
   const contextRef = useRef<AudioContext | null>(null);
   const gainARef = useRef<GainNode | null>(null);
   const gainBRef = useRef<GainNode | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
-  const graphReadyRef = useRef(false);
+  const buffersRef = useRef<[AudioBuffer | null, AudioBuffer | null]>([null, null]);
+  const sourcesRef = useRef<[AudioBufferSourceNode | null, AudioBufferSourceNode | null]>([null, null]);
+  const readersRef = useRef<[FileReader | null, FileReader | null]>([null, null]);
+  const loadVersionsRef = useRef<[number, number]>([0, 0]);
+  const playbackOffsetRef = useRef(0);
+  const playbackStartedAtRef = useRef(0);
+  const volumeRef = useRef(volume);
   const rafRef = useRef<number | null>(null);
 
   const maxDuration = Math.max(slots[0].duration, slots[1].duration, 0);
   const bothReady = slots[0].status === "ready" && slots[1].status === "ready";
   const durationDelta = bothReady ? Math.abs(slots[0].duration - slots[1].duration) : 0;
   const progress = maxDuration ? Math.min(100, (currentTime / maxDuration) * 100) : 0;
-
-  const audioAt = useCallback((index: 0 | 1) => {
-    return index === 0 ? audioARef.current : audioBRef.current;
-  }, []);
 
   function inputAt(index: 0 | 1) {
     return index === 0 ? inputARef.current : inputBRef.current;
@@ -165,42 +160,44 @@ export default function Home() {
     updateSlots(next);
   }
 
-  async function ensureAudioGraph() {
-    if (graphReadyRef.current && contextRef.current) {
-      if (contextRef.current.state === "suspended") await contextRef.current.resume();
-      return true;
+  const ensureAudioGraph = useCallback(async (resume = true) => {
+    if (contextRef.current) {
+      if (resume && contextRef.current.state === "suspended") {
+        try {
+          await contextRef.current.resume();
+        } catch {
+          return null;
+        }
+      }
+      return contextRef.current;
     }
+    if (!window.AudioContext) return null;
 
-    const audioA = audioARef.current;
-    const audioB = audioBRef.current;
-    if (!audioA || !audioB || !window.AudioContext) return false;
-
-    try {
-      const context = new AudioContext();
-      const gainA = context.createGain();
-      const gainB = context.createGain();
-      const master = context.createGain();
-      context.createMediaElementSource(audioA).connect(gainA).connect(master);
-      context.createMediaElementSource(audioB).connect(gainB).connect(master);
-      master.connect(context.destination);
-      gainA.gain.value = activeRef.current === 0 ? 1 : 0;
-      gainB.gain.value = activeRef.current === 1 ? 1 : 0;
-      master.gain.value = volume;
-      contextRef.current = context;
-      gainARef.current = gainA;
-      gainBRef.current = gainB;
-      masterGainRef.current = master;
-      graphReadyRef.current = true;
-      await context.resume();
-      return true;
-    } catch {
-      audioA.volume = activeRef.current === 0 ? volume : 0;
-      audioB.volume = activeRef.current === 1 ? volume : 0;
-      return false;
+    const context = new AudioContext();
+    const gainA = context.createGain();
+    const gainB = context.createGain();
+    const master = context.createGain();
+    gainA.connect(master);
+    gainB.connect(master);
+    master.connect(context.destination);
+    gainA.gain.value = activeRef.current === 0 ? 1 : 0;
+    gainB.gain.value = activeRef.current === 1 ? 1 : 0;
+    master.gain.value = volumeRef.current;
+    contextRef.current = context;
+    gainARef.current = gainA;
+    gainBRef.current = gainB;
+    masterGainRef.current = master;
+    if (resume) {
+      try {
+        await context.resume();
+      } catch {
+        return null;
+      }
     }
-  }
+    return context;
+  }, []);
 
-  function applySourceGain(nextActive: 0 | 1) {
+  const applySourceGain = useCallback((nextActive: 0 | 1) => {
     const context = contextRef.current;
     const gains = [gainARef.current, gainBRef.current];
     if (context && gains[0] && gains[1]) {
@@ -211,47 +208,74 @@ export default function Home() {
         gain.gain.setValueAtTime(gain.gain.value, now);
         gain.gain.linearRampToValueAtTime(index === nextActive ? 1 : 0, now + FADE_SECONDS);
       });
-    } else {
-      const audioA = audioARef.current;
-      const audioB = audioBRef.current;
-      if (audioA) audioA.volume = nextActive === 0 ? volume : 0;
-      if (audioB) audioB.volume = nextActive === 1 ? volume : 0;
     }
-  }
+  }, []);
 
-  const getReferenceTime = useCallback(() => {
-    const preferred = audioAt(activeRef.current);
-    const alternate = audioAt(activeRef.current === 0 ? 1 : 0);
-    if (preferred && !preferred.paused && !preferred.ended) return preferred.currentTime;
-    if (alternate && !alternate.paused && !alternate.ended) return alternate.currentTime;
+  const getTimelineTime = useCallback(() => {
+    const context = contextRef.current;
+    if (playingRef.current && context) {
+      return playbackOffsetRef.current + Math.max(0, context.currentTime - playbackStartedAtRef.current);
+    }
     return currentTimeRef.current;
-  }, [audioAt]);
+  }, []);
+
+  const stopSourceAt = useCallback((index: 0 | 1) => {
+    const source = sourcesRef.current[index];
+    if (!source) return;
+    source.onended = null;
+    try {
+      source.stop();
+    } catch {
+      // A source may already have reached the end of a shorter track.
+    }
+    source.disconnect();
+    sourcesRef.current[index] = null;
+  }, []);
+
+  const stopAllSources = useCallback(() => {
+    stopSourceAt(0);
+    stopSourceAt(1);
+  }, [stopSourceAt]);
+
+  const createSourceAt = useCallback((index: 0 | 1, when: number, offset: number) => {
+    const context = contextRef.current;
+    const buffer = buffersRef.current[index];
+    const gain = index === 0 ? gainARef.current : gainBRef.current;
+    if (!context || !buffer || !gain || offset >= buffer.duration - 0.005) return false;
+
+    stopSourceAt(index);
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(gain);
+    source.start(when, Math.max(0, offset));
+    sourcesRef.current[index] = source;
+    return true;
+  }, [stopSourceAt]);
+
+  const startPlayback = useCallback(async (time: number) => {
+    const context = await ensureAudioGraph();
+    if (!context) {
+      setMessage("This browser does not support Web Audio decoding.");
+      return false;
+    }
+
+    stopAllSources();
+    const when = context.currentTime + SOURCE_LEAD_SECONDS;
+    const started = ([0, 1] as const).map((index) => createSourceAt(index, when, time));
+    if (!started.some(Boolean)) return false;
+
+    playbackOffsetRef.current = time;
+    playbackStartedAtRef.current = when;
+    currentTimeRef.current = time;
+    setCurrentTime(time);
+    playingRef.current = true;
+    setIsPlaying(true);
+    return true;
+  }, [createSourceAt, ensureAudioGraph, stopAllSources]);
 
   async function switchSource(nextActive: 0 | 1) {
     if (slotsRef.current[nextActive].status !== "ready") return;
-    const previousActive = activeRef.current;
-    const referenceTime = getReferenceTime();
-    const target = audioAt(nextActive);
-    if (target && referenceTime < slotsRef.current[nextActive].duration) {
-      if (Math.abs(target.currentTime - referenceTime) > 0.018) target.currentTime = referenceTime;
-    }
     await ensureAudioGraph();
-
-    if (
-      playingRef.current &&
-      target &&
-      target.paused &&
-      referenceTime < slotsRef.current[nextActive].duration - 0.005
-    ) {
-      try {
-        await target.play();
-      } catch {
-        applySourceGain(previousActive);
-        setMessage(`Audio ${nextActive === 0 ? "A" : "B"} could not start. Try pressing play again.`);
-        return;
-      }
-    }
-
     activeRef.current = nextActive;
     setActive(nextActive);
     applySourceGain(nextActive);
@@ -259,48 +283,14 @@ export default function Home() {
     window.setTimeout(() => setMessage(""), 900);
   }
 
-  async function playFrom(time: number) {
-    await ensureAudioGraph();
-    const attempts: { index: 0 | 1; promise: Promise<void> }[] = [];
-    ([0, 1] as const).forEach((index) => {
-      const slot = slotsRef.current[index];
-      const audio = audioAt(index);
-      if (!audio || slot.status !== "ready") return;
-      if (time < slot.duration - 0.005) {
-        if (Math.abs(audio.currentTime - time) > 0.015) audio.currentTime = time;
-        attempts.push({ index, promise: audio.play() });
-      } else {
-        audio.pause();
-      }
-    });
-    const results = await Promise.allSettled(attempts.map(({ promise }) => promise));
-    if (results.length && results.every((result) => result.status === "rejected")) {
-      setMessage("Playback was blocked. Try pressing play again.");
-      return;
-    }
-
-    const activeAttempt = attempts.findIndex(({ index }) => index === activeRef.current);
-    if (activeAttempt >= 0 && results[activeAttempt]?.status === "rejected") {
-      const fallbackAttempt = results.findIndex((result) => result.status === "fulfilled");
-      if (fallbackAttempt >= 0) {
-        const fallback = attempts[fallbackAttempt].index;
-        activeRef.current = fallback;
-        setActive(fallback);
-        applySourceGain(fallback);
-        setMessage(
-          `Audio ${attempts[activeAttempt].index === 0 ? "A" : "B"} could not start. Playing Audio ${fallback === 0 ? "A" : "B"} instead.`,
-        );
-      }
-    }
-
-    playingRef.current = true;
-    setIsPlaying(true);
-  }
-
   async function togglePlay() {
     if (!slotsRef.current.some((slot) => slot.status === "ready")) return;
     if (playingRef.current) {
-      ([0, 1] as const).forEach((index) => audioAt(index)?.pause());
+      const pausedAt = getTimelineTime();
+      stopAllSources();
+      playbackOffsetRef.current = pausedAt;
+      currentTimeRef.current = pausedAt;
+      setCurrentTime(pausedAt);
       playingRef.current = false;
       setIsPlaying(false);
       return;
@@ -309,7 +299,7 @@ export default function Home() {
     const startAt = currentTimeRef.current >= duration - 0.01 ? 0 : currentTimeRef.current;
     currentTimeRef.current = startAt;
     setCurrentTime(startAt);
-    await playFrom(startAt);
+    await startPlayback(startAt);
   }
 
   const seekTo = useCallback(async (rawTime: number) => {
@@ -317,32 +307,16 @@ export default function Home() {
     const nextTime = Math.max(0, Math.min(rawTime, duration));
     currentTimeRef.current = nextTime;
     setCurrentTime(nextTime);
-
-    const playPromises: Promise<void>[] = [];
-    ([0, 1] as const).forEach((index) => {
-      const slot = slotsRef.current[index];
-      const audio = audioAt(index);
-      if (!audio || slot.status !== "ready") return;
-      if (nextTime < slot.duration - 0.005) {
-        audio.currentTime = nextTime;
-        if (playingRef.current) playPromises.push(audio.play());
-      } else {
-        audio.pause();
-        audio.currentTime = Math.max(0, slot.duration);
-      }
-    });
-    await Promise.allSettled(playPromises);
-  }, [audioAt]);
+    playbackOffsetRef.current = nextTime;
+    if (playingRef.current) await startPlayback(nextTime);
+  }, [startPlayback]);
 
   function removeFile(index: 0 | 1) {
-    const slot = slotsRef.current[index];
-    const audio = audioAt(index);
-    if (audio) {
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
-    }
-    if (slot.url) URL.revokeObjectURL(slot.url);
+    loadVersionsRef.current[index] += 1;
+    readersRef.current[index]?.abort();
+    readersRef.current[index] = null;
+    buffersRef.current[index] = null;
+    stopSourceAt(index);
     const next = [...slotsRef.current] as [AudioSlot, AudioSlot];
     next[index] = { ...EMPTY_SLOT };
     updateSlots(next);
@@ -352,8 +326,10 @@ export default function Home() {
       void switchSource(otherIndex);
     }
     if (!next.some((item) => item.status === "ready")) {
+      stopAllSources();
       playingRef.current = false;
       setIsPlaying(false);
+      playbackOffsetRef.current = 0;
       currentTimeRef.current = 0;
       setCurrentTime(0);
     }
@@ -361,21 +337,19 @@ export default function Home() {
 
   function clearBothFiles() {
     ([0, 1] as const).forEach((index) => {
-      const slot = slotsRef.current[index];
-      const audio = audioAt(index);
-      if (audio) {
-        audio.pause();
-        audio.removeAttribute("src");
-        audio.load();
-      }
-      if (slot.url) URL.revokeObjectURL(slot.url);
+      loadVersionsRef.current[index] += 1;
+      readersRef.current[index]?.abort();
+      readersRef.current[index] = null;
+      buffersRef.current[index] = null;
     });
 
+    stopAllSources();
     updateSlots([{ ...EMPTY_SLOT }, { ...EMPTY_SLOT }]);
     activeRef.current = 0;
     setActive(0);
     playingRef.current = false;
     setIsPlaying(false);
+    playbackOffsetRef.current = 0;
     currentTimeRef.current = 0;
     setCurrentTime(0);
     applySourceGain(0);
@@ -392,54 +366,116 @@ export default function Home() {
       });
       return;
     }
+    if (file.size > MAX_FILE_BYTES) {
+      patchSlot(index, {
+        ...EMPTY_SLOT,
+        status: "error",
+        name: file.name,
+        error: "For reliable in-browser decoding, choose a file smaller than 300 MB.",
+      });
+      return;
+    }
 
-    const oldUrl = slotsRef.current[index].url;
-    if (oldUrl) URL.revokeObjectURL(oldUrl);
-    const audio = audioAt(index);
-    audio?.pause();
-    const url = URL.createObjectURL(file);
+    loadVersionsRef.current[index] += 1;
+    const version = loadVersionsRef.current[index];
+    readersRef.current[index]?.abort();
+    buffersRef.current[index] = null;
+    stopSourceAt(index);
+    const otherIndex = index === 0 ? 1 : 0;
+    if (playingRef.current && slotsRef.current[otherIndex].status !== "ready") {
+      const pausedAt = getTimelineTime();
+      stopAllSources();
+      playingRef.current = false;
+      setIsPlaying(false);
+      playbackOffsetRef.current = pausedAt;
+      currentTimeRef.current = pausedAt;
+      setCurrentTime(pausedAt);
+    } else if (activeRef.current === index && slotsRef.current[otherIndex].status === "ready") {
+      activeRef.current = otherIndex;
+      setActive(otherIndex);
+      applySourceGain(otherIndex);
+    }
     patchSlot(index, {
       file,
-      url,
       name: file.name,
       size: file.size,
       duration: 0,
       peaks: [],
       status: "loading",
+      loadStage: "reading",
+      loadProgress: 0,
       error: "",
     });
-    if (audio) {
-      audio.src = url;
-      audio.load();
-    }
 
     try {
-      const peaks = await makePeaks(file);
-      if (slotsRef.current[index].url === url) patchSlot(index, { peaks });
-    } catch {
-      // Playback can still work when a browser cannot decode a waveform preview.
-    }
-  }
+      const reader = new FileReader();
+      readersRef.current[index] = reader;
+      const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+        reader.onprogress = (event) => {
+          if (loadVersionsRef.current[index] !== version || !event.lengthComputable) return;
+          patchSlot(index, { loadProgress: Math.round((event.loaded / event.total) * 50) });
+        };
+        reader.onload = () => {
+          if (reader.result instanceof ArrayBuffer) resolve(reader.result);
+          else reject(new Error("The audio file could not be read."));
+        };
+        reader.onerror = () => reject(reader.error ?? new Error("The audio file could not be read."));
+        reader.onabort = () => reject(new DOMException("File reading was cancelled.", "AbortError"));
+        reader.readAsArrayBuffer(file);
+      });
+      if (loadVersionsRef.current[index] !== version) return;
 
-  function handleMetadata(index: 0 | 1) {
-    const audio = audioAt(index);
-    if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) {
-      patchSlot(index, { status: "error", error: "The duration could not be read." });
-      return;
-    }
-    patchSlot(index, { duration: audio.duration, status: "ready", error: "" });
-    if (slotsRef.current[activeRef.current].status !== "ready") {
-      activeRef.current = index;
-      setActive(index);
-      applySourceGain(index);
-    }
-  }
+      patchSlot(index, { loadStage: "decoding", loadProgress: 55 });
+      const context = await ensureAudioGraph(false);
+      if (!context) throw new Error("Web Audio is unavailable in this browser.");
+      const buffer = await context.decodeAudioData(arrayBuffer);
+      if (loadVersionsRef.current[index] !== version) return;
+      if (!Number.isFinite(buffer.duration) || buffer.duration <= 0) {
+        throw new Error("The duration could not be read.");
+      }
 
-  function handleAudioError(index: 0 | 1) {
-    if (slotsRef.current[index].status === "loading") {
+      const shouldActivate = slotsRef.current[activeRef.current].status !== "ready";
+      buffersRef.current[index] = buffer;
+      readersRef.current[index] = null;
+      patchSlot(index, {
+        duration: buffer.duration,
+        peaks: makePeaks(buffer),
+        status: "ready",
+        loadStage: "idle",
+        loadProgress: 100,
+        error: "",
+      });
+
+      if (shouldActivate) {
+        activeRef.current = index;
+        setActive(index);
+        applySourceGain(index);
+      }
+
+      if (playingRef.current) {
+        const now = context.currentTime;
+        const when = now + SOURCE_LEAD_SECONDS;
+        const timelineAtStart = getTimelineTime() + SOURCE_LEAD_SECONDS;
+        if (createSourceAt(index, when, timelineAtStart) && activeRef.current === index) {
+          const gain = index === 0 ? gainARef.current : gainBRef.current;
+          if (gain) {
+            gain.gain.cancelScheduledValues(now);
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(1, when + FADE_SECONDS);
+          }
+        }
+      }
+    } catch (error) {
+      if (loadVersionsRef.current[index] !== version) return;
+      readersRef.current[index] = null;
+      buffersRef.current[index] = null;
       patchSlot(index, {
         status: "error",
-        error: "This browser could not decode the file. Try WAV, MP3, M4A, FLAC, or OGG.",
+        loadStage: "idle",
+        loadProgress: 0,
+        error: error instanceof Error && error.name !== "EncodingError"
+          ? error.message
+          : "This browser could not decode the file. Try WAV, MP3, M4A, FLAC, or OGG.",
       });
     }
   }
@@ -479,45 +515,28 @@ export default function Home() {
   }, [loop]);
 
   useEffect(() => {
+    volumeRef.current = volume;
     if (masterGainRef.current && contextRef.current) {
       masterGainRef.current.gain.setTargetAtTime(volume, contextRef.current.currentTime, 0.015);
-    } else {
-      const audioA = audioARef.current;
-      const audioB = audioBRef.current;
-      if (audioA) audioA.volume = activeRef.current === 0 ? volume : 0;
-      if (audioB) audioB.volume = activeRef.current === 1 ? volume : 0;
     }
   }, [volume]);
 
   useEffect(() => {
     function tick() {
       if (!playingRef.current) return;
-      const reference = getReferenceTime();
+      const reference = getTimelineTime();
       const duration = Math.max(...slotsRef.current.map((slot) => slot.duration), 0);
       currentTimeRef.current = Math.min(reference, duration);
       setCurrentTime(Math.min(reference, duration));
-
-      const audioA = audioARef.current;
-      const audioB = audioBRef.current;
-      if (
-        audioA &&
-        audioB &&
-        !audioA.paused &&
-        !audioB.paused &&
-        Math.abs(audioA.currentTime - audioB.currentTime) > DRIFT_TOLERANCE
-      ) {
-        const master = activeRef.current === 0 ? audioA : audioB;
-        const follower = activeRef.current === 0 ? audioB : audioA;
-        follower.currentTime = master.currentTime;
-      }
 
       if (duration > 0 && reference >= duration - 0.025) {
         if (loopRef.current) {
           void seekTo(0);
         } else {
-          ([0, 1] as const).forEach((index) => audioAt(index)?.pause());
+          stopAllSources();
           playingRef.current = false;
           setIsPlaying(false);
+          playbackOffsetRef.current = duration;
           currentTimeRef.current = duration;
           setCurrentTime(duration);
           return;
@@ -530,7 +549,7 @@ export default function Home() {
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
-  }, [audioAt, getReferenceTime, isPlaying, seekTo]);
+  }, [getTimelineTime, isPlaying, seekTo, stopAllSources]);
 
   useEffect(() => {
     function handleKey(event: globalThis.KeyboardEvent) {
@@ -558,19 +577,16 @@ export default function Home() {
   });
 
   useEffect(() => {
+    const readers = readersRef.current;
     return () => {
-      slotsRef.current.forEach((slot) => {
-        if (slot.url) URL.revokeObjectURL(slot.url);
-      });
+      readers.forEach((reader) => reader?.abort());
+      stopAllSources();
       void contextRef.current?.close();
     };
-  }, []);
+  }, [stopAllSources]);
 
   return (
     <main className="app-shell">
-      <audio ref={audioARef} preload="auto" onLoadedMetadata={() => handleMetadata(0)} onError={() => handleAudioError(0)} />
-      <audio ref={audioBRef} preload="auto" onLoadedMetadata={() => handleMetadata(1)} onError={() => handleAudioError(1)} />
-
       <header className="site-header">
         <a className="brand" href="#top" aria-label="Audiff home">
           <span className="brand-mark"><ArrowLeftRight size={18} strokeWidth={2.4} /></span>
@@ -630,8 +646,27 @@ export default function Home() {
                     <div className="file-copy">
                       <strong title={slot.name}>{slot.name || `Audio ${label}`}</strong>
                       <span>
-                        {slot.status === "loading" ? "Reading audio…" : slot.status === "error" ? slot.error : `${formatTime(slot.duration)} · ${formatSize(slot.size)}`}
+                        {slot.status === "loading"
+                          ? slot.loadStage === "reading"
+                            ? `Reading audio… ${slot.loadProgress}%`
+                            : "Decoding for seamless playback…"
+                          : slot.status === "error"
+                            ? slot.error
+                            : `${formatTime(slot.duration)} · ${formatSize(slot.size)}`}
                       </span>
+                      {slot.status === "loading" && (
+                        <div
+                          className={`decode-progress ${slot.loadStage === "decoding" ? "is-decoding" : ""}`}
+                          role="progressbar"
+                          aria-label={`Preparing audio ${label}`}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={slot.loadStage === "reading" ? slot.loadProgress : undefined}
+                          aria-valuetext={slot.loadStage === "decoding" ? "Decoding audio" : undefined}
+                        >
+                          <span style={{ width: `${slot.loadProgress}%` }} />
+                        </div>
+                      )}
                     </div>
                     {slot.status === "ready" && <Check className="file-check" size={18} />}
                     <div className="file-actions">
@@ -673,26 +708,32 @@ export default function Home() {
           <div className="timeline" style={{ "--progress": `${progress}%` } as React.CSSProperties}>
             <div className="wave-row wave-a">
               <span className="wave-label">A</span>
-              <Waveform peaks={slots[0].peaks} label="Audio A" />
-              {slots[0].duration > 0 && slots[0].duration < maxDuration && <span className="audio-end" style={{ left: `${(slots[0].duration / maxDuration) * 100}%` }}>ends</span>}
+              <div className="wave-track">
+                <Waveform peaks={slots[0].peaks} label="Audio A" />
+                {slots[0].duration > 0 && slots[0].duration < maxDuration && <span className="audio-end" style={{ left: `${(slots[0].duration / maxDuration) * 100}%` }}>ends</span>}
+              </div>
             </div>
             <div className="wave-row wave-b">
               <span className="wave-label">B</span>
-              <Waveform peaks={slots[1].peaks} label="Audio B" />
-              {slots[1].duration > 0 && slots[1].duration < maxDuration && <span className="audio-end" style={{ left: `${(slots[1].duration / maxDuration) * 100}%` }}>ends</span>}
+              <div className="wave-track">
+                <Waveform peaks={slots[1].peaks} label="Audio B" />
+                {slots[1].duration > 0 && slots[1].duration < maxDuration && <span className="audio-end" style={{ left: `${(slots[1].duration / maxDuration) * 100}%` }}>ends</span>}
+              </div>
             </div>
-            <div className="playhead" aria-hidden="true"><span /></div>
-            <input
-              className="scrubber"
-              aria-label="Playback position"
-              type="range"
-              min="0"
-              max={maxDuration || 1}
-              step="0.001"
-              value={currentTime}
-              disabled={!maxDuration}
-              onChange={(event) => void seekTo(Number(event.target.value))}
-            />
+            <div className="timeline-track">
+              <div className="playhead" aria-hidden="true"><span /></div>
+              <input
+                className="scrubber"
+                aria-label="Playback position"
+                type="range"
+                min="0"
+                max={maxDuration || 1}
+                step="0.001"
+                value={currentTime}
+                disabled={!maxDuration}
+                onChange={(event) => void seekTo(Number(event.target.value))}
+              />
+            </div>
           </div>
 
           <div className="controls">
