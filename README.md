@@ -1,6 +1,6 @@
 # Audiff
 
-Audiff is a private, browser-based A/B audio comparison tool. Load two versions of the same recording, press play once, and switch between A and B without losing your place.
+Audiff is a private, browser-based A/B audio comparison tool. Load two versions of the same recording, press play once, and switch between them on one sample-accurate audio clock.
 
 ![Audiff social preview](public/og.png)
 
@@ -13,7 +13,7 @@ Audiff is a private, browser-based A/B audio comparison tool. Load two versions 
 - Uses the longer file for the shared timeline when durations differ.
 - Shows exactly where a shorter file ends and lets the longer file continue.
 - Generates lightweight waveform previews in the browser.
-- Supports drag-and-drop, file replacement, seeking, looping, volume control, and keyboard shortcuts.
+- Supports drag-and-drop, file replacement, clearing both tracks, seeking, looping, volume control, and keyboard shortcuts.
 - Processes audio locally. Files are never uploaded or stored by the app.
 
 ## Requirements
@@ -25,9 +25,9 @@ Audiff is a private, browser-based A/B audio comparison tool. Load two versions 
 ## Install and run
 
 ```bash
-git clone <your-repository-url>
-cd audio-comparison
-npm install
+git clone https://github.com/wedoso/Audiff.git
+cd Audiff
+npm ci
 npm run dev
 ```
 
@@ -65,9 +65,11 @@ For Netlify, Cloudflare Pages, Vercel static hosting, S3, or similar services, u
 ## Use
 
 1. Drop the first audio file on **A** and the second on **B**. You can also drop two files onto either zone at once.
-2. Press the central play button or the space bar.
-3. Press **1** / **A** for Audio A or **2** / **B** for Audio B. Playback stays at the same timestamp.
-4. Drag anywhere on the waveform timeline to seek. Use the arrow keys to jump five seconds.
+2. Wait for each track to finish reading and decoding. Its checkmark appears when it is ready.
+3. Press the central play button or the space bar.
+4. Press **1** / **A** for Audio A or **2** / **B** for Audio B. Playback stays at the same timestamp.
+5. Drag anywhere on the waveform timeline to seek. Use the arrow keys to jump five seconds.
+6. Use **Clear both tracks** to stop playback and reset the comparison.
 
 ### Keyboard shortcuts
 
@@ -109,12 +111,13 @@ The app uses React, Vite, the Web Audio API, and Lucide icons. It has no server 
 
 ## Quality checks
 
+Run the complete validation suite:
+
 ```bash
-npm run build
-npm run lint
-npm test
 npm run check
 ```
+
+The individual commands are `npm run lint`, `npm run build`, and `npm test`.
 
 ## Privacy
 
