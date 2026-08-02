@@ -27,6 +27,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import Live2DStage from "./Live2DStage";
 import { EMPTY_AUDIO_VISUAL, sampleAnalyser } from "./audioVisual";
 
@@ -62,14 +63,47 @@ const FADE_SECONDS = 0.018;
 const SOURCE_LEAD_SECONDS = 0.025;
 const MAX_FILE_BYTES = 300 * 1024 * 1024;
 
-function withSceneTransition(update: () => void) {
-  update();
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+type SceneTransitionDirection = "enter" | "exit";
+
+let sceneCoverTimer: number | null = null;
+let sceneCleanupTimer: number | null = null;
+let sceneTransitionFrame: number | null = null;
+
+function withSceneTransition(update: () => void, direction: SceneTransitionDirection): Promise<void> {
+  const commit = () => flushSync(update);
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    commit();
+    return Promise.resolve();
+  }
   const root = document.documentElement;
-  root.classList.remove("is-scene-transitioning");
+  if (sceneCoverTimer !== null) window.clearTimeout(sceneCoverTimer);
+  if (sceneCleanupTimer !== null) window.clearTimeout(sceneCleanupTimer);
+  if (sceneTransitionFrame !== null) window.cancelAnimationFrame(sceneTransitionFrame);
+  root.classList.remove("is-scene-transitioning", "is-scene-covering", "is-scene-curtain-open", "is-scene-revealing");
+  root.dataset.sceneTransition = direction;
   void root.offsetWidth;
-  root.classList.add("is-scene-transitioning");
-  window.setTimeout(() => root.classList.remove("is-scene-transitioning"), 920);
+  root.classList.add("is-scene-transitioning", "is-scene-covering");
+  sceneTransitionFrame = window.requestAnimationFrame(() => {
+    root.classList.add("is-scene-curtain-open");
+    sceneTransitionFrame = null;
+  });
+  const cleanup = () => {
+    root.classList.remove("is-scene-transitioning", "is-scene-covering", "is-scene-curtain-open", "is-scene-revealing");
+    delete root.dataset.sceneTransition;
+    sceneCoverTimer = null;
+    sceneCleanupTimer = null;
+  };
+  return new Promise((resolve) => {
+    // Commit only after the solid curtain covers the viewport. Pixi's canvas is
+    // never snapshotted or duplicated, so Hiyori remains one continuous render.
+    sceneCoverTimer = window.setTimeout(() => {
+      commit();
+      root.classList.remove("is-scene-covering");
+      root.classList.add("is-scene-revealing");
+      resolve();
+    }, 390);
+    sceneCleanupTimer = window.setTimeout(cleanup, 1040);
+  });
 }
 
 function formatTime(seconds: number, precise = false) {
@@ -139,6 +173,8 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [dragging, setDragging] = useState<0 | 1 | null>(null);
   const [focusMode, setFocusMode] = useState(false);
+  const [focusTransition, setFocusTransition] = useState<"enter" | "exit" | null>(null);
+  const focusTransitionTimerRef = useRef<number | null>(null);
 
   const inputARef = useRef<HTMLInputElement>(null);
   const inputBRef = useRef<HTMLInputElement>(null);
@@ -189,10 +225,10 @@ export default function Home() {
     const next = [...slotsRef.current] as [AudioSlot, AudioSlot];
     next[index] = { ...next[index], ...patch };
     const returningToLanding = !next.some((item) => item.status !== "empty");
-    if (returningToLanding) withSceneTransition(() => {
+    if (returningToLanding) void withSceneTransition(() => {
       updateSlots(next);
       setFocusMode(false);
-    });
+    }, "exit");
     else updateSlots(next);
   }
 
@@ -394,7 +430,15 @@ export default function Home() {
     stopSourceAt(index);
     const next = [...slotsRef.current] as [AudioSlot, AudioSlot];
     next[index] = { ...EMPTY_SLOT };
-    updateSlots(next);
+    const returningToLanding = !next.some((item) => item.status !== "empty");
+    if (returningToLanding) {
+      void withSceneTransition(() => {
+        updateSlots(next);
+        setFocusMode(false);
+      }, "exit");
+    } else {
+      updateSlots(next);
+    }
 
     const otherIndex = index === 0 ? 1 : 0;
     if (activeRef.current === index && next[otherIndex].status === "ready") {
@@ -419,10 +463,10 @@ export default function Home() {
     });
 
     stopAllSources();
-    withSceneTransition(() => {
+    void withSceneTransition(() => {
       updateSlots([{ ...EMPTY_SLOT }, { ...EMPTY_SLOT }]);
       setFocusMode(false);
-    });
+    }, "exit");
     activeRef.current = 0;
     setActive(0);
     playingRef.current = false;
@@ -485,7 +529,7 @@ export default function Home() {
       error: "",
     };
     if (!slotsRef.current.some((slot) => slot.status !== "empty")) {
-      withSceneTransition(() => patchSlot(index, nextLoadingState));
+      await withSceneTransition(() => patchSlot(index, nextLoadingState), "enter");
     } else {
       patchSlot(index, nextLoadingState);
     }
@@ -604,6 +648,17 @@ export default function Home() {
     }
   }, [volume]);
 
+  function changeFocusMode(nextFocusMode: boolean) {
+    if (nextFocusMode === focusMode) return;
+    if (focusTransitionTimerRef.current !== null) window.clearTimeout(focusTransitionTimerRef.current);
+    setFocusTransition(nextFocusMode ? "enter" : "exit");
+    setFocusMode(nextFocusMode);
+    focusTransitionTimerRef.current = window.setTimeout(() => {
+      setFocusTransition(null);
+      focusTransitionTimerRef.current = null;
+    }, 1040);
+  }
+
   useEffect(() => {
     audioVisualRef.current = {
       ...audioVisualRef.current,
@@ -679,9 +734,9 @@ export default function Home() {
       } else if (event.key.toLowerCase() === "l") {
         setLoop((value) => !value);
       } else if (event.key.toLowerCase() === "f" && hasAnyTrack) {
-        setFocusMode((value) => !value);
+        changeFocusMode(!focusMode);
       } else if (event.key === "Escape") {
-        setFocusMode(false);
+        changeFocusMode(false);
       }
     }
     window.addEventListener("keydown", handleKey);
@@ -692,6 +747,7 @@ export default function Home() {
     const readers = readersRef.current;
     return () => {
       readers.forEach((reader) => reader?.abort());
+      if (focusTransitionTimerRef.current !== null) window.clearTimeout(focusTransitionTimerRef.current);
       stopAllSources();
       void contextRef.current?.close();
     };
@@ -769,7 +825,22 @@ export default function Home() {
   }
 
   return (
-    <main className={`app-shell ${focusMode ? "is-focus-mode" : ""}`}>
+    <main className={`app-shell ${focusMode ? "is-focus-mode" : ""} ${focusTransition ? `focus-transition-${focusTransition}` : ""}`}>
+      <div className="scene-curtain" aria-hidden="true">
+        <span className="scene-curtain-disc" />
+        <span className="scene-curtain-line scene-curtain-line-one" />
+        <span className="scene-curtain-line scene-curtain-line-two" />
+        <span className="scene-curtain-copy scene-curtain-copy-enter">
+          <small>Now entering</small>
+          <strong><span>The room</span><em>is listening.</em></strong>
+          <i>Your track · Hiyori in motion</i>
+        </span>
+        <span className="scene-curtain-copy scene-curtain-copy-exit">
+          <small>Session complete</small>
+          <strong><span>Until the</span><em>next song.</em></strong>
+          <i>Your files never left this device</i>
+        </span>
+      </div>
       <header className="site-header">
         <a className="brand" href="#top" aria-label="Audiff home">
           <span className="brand-mark"><ArrowLeftRight size={18} strokeWidth={2} /></span>
@@ -791,7 +862,7 @@ export default function Home() {
                 className="focus-mode-button"
                 type="button"
                 aria-pressed={focusMode}
-                onClick={() => setFocusMode((value) => !value)}
+                onClick={() => changeFocusMode(!focusMode)}
               >
                 {focusMode ? <Minimize2 size={15} strokeWidth={1.7} /> : <Maximize2 size={15} strokeWidth={1.7} />}
                 {focusMode ? "Leave focus" : "Focus mode"}
@@ -830,7 +901,7 @@ export default function Home() {
           <div className="welcome-copy">
             <p className="eyebrow"><Headphones size={15} strokeWidth={1.7} /> A visual music player for close listening</p>
             <h1>Let your music<br /><em>move someone.</em></h1>
-            <p>Hiyori listens locally in your browser. Her body follows low frequencies, her expression follows the midrange, and transients earn real gestures.</p>
+            <p>Hiyori listens locally in your browser. Learned beats guide her accents, the active track guides her attention, and low frequencies shape the stage.</p>
           </div>
         ) : (
           <div className="track-score-strip" aria-label="Loaded tracks">
@@ -888,14 +959,14 @@ export default function Home() {
           </div>
 
           <div className="timeline" style={{ "--progress": `${progress}%` } as React.CSSProperties}>
-            <div className="wave-row wave-a">
+            <div className={`wave-row wave-a ${active === 0 ? "is-audible" : ""} ${isPlaying && active === 0 ? "is-playing" : ""}`}>
               <span className="wave-label">A</span>
               <div className="wave-track">
                 <Waveform peaks={slots[0].peaks} label="Audio A" />
                 {slots[0].duration > 0 && slots[0].duration < maxDuration && <span className="audio-end" style={{ left: `${(slots[0].duration / maxDuration) * 100}%` }}>ends</span>}
               </div>
             </div>
-            <div className="wave-row wave-b">
+            <div className={`wave-row wave-b ${active === 1 ? "is-audible" : ""} ${isPlaying && active === 1 ? "is-playing" : ""}`}>
               <span className="wave-label">B</span>
               <div className="wave-track">
                 <Waveform peaks={slots[1].peaks} label="Audio B" />

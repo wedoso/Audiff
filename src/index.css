@@ -916,44 +916,10 @@ footer p { margin: 0; }
 }
 
 .live2d-host,
-.live2d-canvas,
-.stage-glow,
-.stage-orbit { position: absolute; inset: 0; width: 100%; height: 100%; }
+.live2d-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
 .live2d-host { z-index: 3; }
 .live2d-canvas { display: block; cursor: crosshair; }
-
-.stage-glow {
-  z-index: 1;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .34), transparent);
-  transform: translateX(-100%);
-  animation: stage-scan 7s ease-in-out infinite;
-}
-
-.stage-orbit {
-  z-index: 1;
-  inset: auto;
-  border: 1px dashed rgba(200, 95, 109, .22);
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-.stage-orbit-one {
-  width: 440px;
-  height: 440px;
-  top: 16%;
-  left: 21%;
-  animation: orbit-drift 9s ease-in-out infinite alternate;
-}
-
-.stage-orbit-two {
-  width: 580px;
-  height: 580px;
-  top: 2%;
-  left: 10%;
-  border-color: rgba(84, 127, 121, .19);
-  animation: orbit-drift 13s ease-in-out infinite alternate-reverse;
-}
 
 .stage-topline {
   position: absolute;
@@ -1107,17 +1073,6 @@ footer p { margin: 0; }
 .live2d-stage-player .motion-legend { left: 20px; right: auto; }
 .workspace { margin-top: 18px; }
 
-@keyframes stage-scan {
-  0%, 30% { transform: translateX(-100%); opacity: 0; }
-  55% { opacity: 1; }
-  80%, 100% { transform: translateX(100%); opacity: 0; }
-}
-
-@keyframes orbit-drift {
-  from { transform: translate3d(-10px, 7px, 0) scale(.96); }
-  to { transform: translate3d(10px, -7px, 0) scale(1.04); }
-}
-
 @media (max-width: 900px) {
   .welcome-screen {
     grid-template-columns: 1fr;
@@ -1146,34 +1101,10 @@ footer p { margin: 0; }
   .player-hero-copy { padding: 24px 20px; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .stage-glow,
-  .stage-orbit { animation: none !important; }
-}
-
 /* Listening room: Hiyori is the interface, not content inside a frame. */
 .welcome-screen,
 .player-hero {
   position: relative;
-}
-
-.welcome-screen::before,
-.player-hero::before {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  border-radius: 50%;
-  pointer-events: none;
-  filter: blur(2px);
-}
-
-.welcome-screen::before {
-  width: 690px;
-  height: 690px;
-  top: 18px;
-  right: -24px;
-  background:
-    radial-gradient(circle at 48% 42%, rgba(255, 255, 255, .92), rgba(246, 225, 227, .48) 42%, rgba(224, 236, 232, .3) 68%, transparent 69%);
 }
 
 .live2d-stage {
@@ -1184,58 +1115,28 @@ footer p { margin: 0; }
   overflow: visible;
 }
 
-.live2d-stage::before {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  width: 18%;
-  height: 3.2%;
-  left: 50%;
-  bottom: 4.6%;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(39, 49, 72, .23), rgba(39, 49, 72, .07) 42%, transparent 72%);
-  filter: blur(7px);
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-
 .live2d-stage { --stage-light-rgb: 84 127 121; }
 .live2d-stage.light-b { --stage-light-rgb: 200 95 109; }
+.live2d-stage-welcome {
+  --stage-subject-x: 58%;
+  --stage-subject-y: 54%;
+}
 
-.stage-ambient-light,
-.stage-floor-light {
+.stage-music-disc {
   position: absolute;
   z-index: 1;
   pointer-events: none;
-  --stage-light-rgb: 84 127 121;
-}
-
-.live2d-stage.light-b .stage-ambient-light,
-.live2d-stage.light-b .stage-floor-light { --stage-light-rgb: 200 95 109; }
-
-.stage-ambient-light {
-  width: 50%;
-  height: 72%;
-  left: 50%;
-  top: 10%;
+  width: min(560px, 52%);
+  aspect-ratio: 1;
+  left: var(--stage-subject-x, 50%);
+  top: var(--stage-subject-y, 47%);
   border-radius: 50%;
-  background: radial-gradient(circle, rgb(var(--stage-light-rgb) / .32), rgb(var(--stage-light-rgb) / .11) 38%, transparent 70%);
-  filter: blur(calc(18px + var(--music-bass, 0) * 10px));
-  opacity: calc(.18 + var(--music-energy, 0) * .28 + var(--beat-pulse, 0) * .5);
-  transform: translateX(-50%) scale(calc(1 + var(--beat-pulse, 0) * .07));
-  transform-origin: 50% 72%;
-}
-
-.stage-floor-light {
-  width: 34%;
-  height: 7%;
-  left: 50%;
-  bottom: 4.4%;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgb(var(--stage-light-rgb) / .5), rgb(var(--stage-light-rgb) / .11) 48%, transparent 72%);
-  filter: blur(9px);
-  opacity: calc(.16 + var(--music-bass, 0) * .25 + var(--beat-pulse, 0) * .5);
-  transform: translateX(-50%) scaleX(calc(1 + var(--beat-pulse, 0) * .12));
+  background: rgb(var(--stage-light-rgb) / .34);
+  opacity: calc(.3 + var(--music-active, 0) * .06 + var(--music-energy-long, 0) * .08 + var(--beat-tier, 0) * .04);
+  filter: none;
+  transform: translate(-50%, -50%) scale(calc(.91 + var(--music-energy-long, 0) * .05 + var(--beat-tier, 0) * .24 + var(--beat-pulse, 0) * .04));
+  transform-origin: 50% 50%;
+  transition: background .8s ease, opacity .16s linear;
 }
 
 .live2d-stage-welcome {
@@ -1275,16 +1176,6 @@ footer p { margin: 0; }
   isolation: isolate;
 }
 
-.player-hero::before {
-  width: 780px;
-  height: 620px;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  background:
-    radial-gradient(circle at 50% 44%, rgba(255, 255, 255, .94), rgba(246, 225, 227, .45) 44%, rgba(224, 236, 232, .25) 69%, transparent 70%);
-}
-
 .player-hero-copy {
   position: absolute;
   z-index: 7;
@@ -1319,8 +1210,6 @@ footer p { margin: 0; }
   background: rgba(255, 250, 245, .72);
   backdrop-filter: blur(8px);
 }
-
-.live2d-stage-player .stage-glow { display: none; }
 
 .player-hero + .workspace {
   margin-top: -230px;
@@ -1388,24 +1277,10 @@ footer p { margin: 0; }
 }
 
 @media (max-width: 900px) {
-  .welcome-screen::before {
-    width: 620px;
-    height: 620px;
-    right: 50%;
-    top: 250px;
-    transform: translateX(50%);
-  }
-
   .player-hero {
     min-height: auto;
     display: grid;
     grid-template-columns: 1fr;
-  }
-
-  .player-hero::before {
-    width: 100%;
-    height: 560px;
-    top: 210px;
   }
 
   .player-hero-copy {
@@ -1442,11 +1317,7 @@ footer p { margin: 0; }
 }
 
 @media (max-width: 600px) {
-  .welcome-screen::before {
-    width: 460px;
-    height: 460px;
-    top: 280px;
-  }
+  .live2d-stage-welcome { --stage-subject-x: 50%; }
 
   .stage-invitation {
     left: 12px;
@@ -1556,51 +1427,156 @@ footer p { margin: 0; }
   transform: translateY(-1px) rotate(-.25deg);
 }
 
-.listening-scene { view-transition-name: listening-scene; }
-.live2d-stage { view-transition-name: hiyori-stage; }
-.welcome-copy,
-.player-hero-copy { view-transition-name: scene-copy; }
-.welcome-choices { view-transition-name: scene-actions; }
-.workspace { view-transition-name: listening-console; }
-
-::view-transition-group(listening-scene),
-::view-transition-group(hiyori-stage) {
-  animation-duration: .9s;
-  animation-timing-function: cubic-bezier(.22, 1, .36, 1);
+.scene-curtain {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  contain: strict;
+  transition: opacity .46s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .46s;
 }
 
-::view-transition-old(scene-copy),
-::view-transition-old(scene-actions) {
-  animation: stationery-leave .34s ease both;
+.scene-curtain-disc {
+  position: absolute;
+  width: 18vmax;
+  height: 18vmax;
+  left: 58%;
+  top: 49%;
+  border-radius: 50%;
+  background: #d7e5e1;
+  box-shadow: inset 0 0 0 1px rgba(32, 43, 70, .08);
+  transform: translate(-50%, -50%) scale(.06);
+  will-change: transform;
+  transition: transform .48s cubic-bezier(.76, 0, .24, 1);
 }
 
-::view-transition-new(scene-copy),
-::view-transition-new(listening-console) {
-  animation: stationery-arrive .72s .1s cubic-bezier(.22, 1, .36, 1) both;
+.scene-curtain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background-image: radial-gradient(circle, rgba(32, 43, 70, .09) .7px, transparent .8px);
+  background-size: 18px 18px;
+  transition: opacity .2s ease .18s;
 }
 
-@keyframes stationery-leave {
-  to { opacity: 0; transform: translateY(-10px); filter: blur(3px); }
+.scene-curtain-line {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  width: min(58vw, 740px);
+  height: 1px;
+  background: rgba(32, 43, 70, .22);
+  transform: translateX(-50%) scaleX(0);
+  transition: transform .38s cubic-bezier(.16, 1, .3, 1) .18s;
 }
 
-@keyframes stationery-arrive {
-  from { opacity: 0; transform: translateY(18px); filter: blur(4px); }
+.scene-curtain-line-one { top: calc(50% - 82px); }
+.scene-curtain-line-two { top: calc(50% + 82px); }
+
+.scene-curtain-copy {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  left: 50%;
+  width: min(660px, calc(100% - 48px));
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  opacity: 0;
+  color: var(--ink);
+  text-align: center;
+  transform: translate(-50%, calc(-50% + 10px));
+  transition: opacity .24s ease .18s, transform .36s cubic-bezier(.16, 1, .3, 1) .18s;
 }
 
-.is-scene-transitioning .listening-scene {
-  animation: scene-breathe .9s cubic-bezier(.22, 1, .36, 1) both;
+.scene-curtain-copy-exit,
+html[data-scene-transition="exit"] .scene-curtain-copy-enter { display: none; }
+html[data-scene-transition="exit"] .scene-curtain-copy-exit { display: grid; }
+
+.scene-curtain-copy small,
+.scene-curtain-copy i {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
-.is-scene-transitioning .player-hero-copy,
-.is-scene-transitioning .workspace,
-.is-scene-transitioning .welcome-copy,
-.is-scene-transitioning .welcome-choices {
-  animation: stationery-arrive .72s .08s cubic-bezier(.22, 1, .36, 1) both;
+.scene-curtain-copy small {
+  color: rgba(32, 43, 70, .65);
+  font-size: 8px;
+  letter-spacing: .28em;
 }
 
-@keyframes scene-breathe {
-  0% { opacity: .78; filter: saturate(.92) blur(1.5px); }
-  100% { opacity: 1; filter: saturate(1) blur(0); }
+.scene-curtain-copy strong {
+  display: flex;
+  align-items: baseline;
+  gap: .24em;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(35px, 5vw, 66px);
+  font-weight: 600;
+  line-height: .98;
+  letter-spacing: -.06em;
+}
+
+.scene-curtain-copy strong em {
+  color: #b95161;
+  font-weight: 500;
+}
+
+.scene-curtain-copy i {
+  font-size: 8px;
+  letter-spacing: .17em;
+}
+
+html[data-scene-transition="exit"] .scene-curtain-disc { background: #efcdd2; }
+
+html.is-scene-transitioning .scene-curtain {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+html.is-scene-curtain-open .scene-curtain-disc {
+  transform: translate(-50%, -50%) scale(13);
+}
+
+html.is-scene-curtain-open .scene-curtain::after { opacity: .42; }
+html.is-scene-curtain-open .scene-curtain-line { transform: translateX(-50%) scaleX(1); }
+html.is-scene-curtain-open .scene-curtain-copy { opacity: 1; transform: translate(-50%, -50%); }
+
+html.is-scene-revealing .scene-curtain {
+  opacity: 0;
+  transition-duration: .5s;
+  transition-delay: .08s;
+}
+
+html.is-scene-covering .listening-scene {
+  opacity: .74;
+  transform: scale(.994);
+  transition: opacity .28s ease, transform .38s cubic-bezier(.4, 0, 1, 1);
+}
+
+@keyframes score-unfold {
+  from { opacity: 0; transform: translateY(-22px) scaleY(.72); transform-origin: 50% 0; filter: blur(5px); }
+}
+
+@keyframes console-rise {
+  from { opacity: 0; transform: translateY(28px) scale(.985); filter: blur(5px); }
+}
+
+html[data-scene-transition="enter"].is-scene-revealing .track-score-strip {
+  animation: score-unfold .62s .02s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+html[data-scene-transition="enter"].is-scene-revealing .workspace,
+html[data-scene-transition="enter"].is-scene-revealing .header-session,
+html[data-scene-transition="exit"].is-scene-revealing .welcome-copy,
+html[data-scene-transition="exit"].is-scene-revealing .welcome-choices {
+  animation: console-rise .62s .08s cubic-bezier(.16, 1, .3, 1) both;
 }
 
 .welcome-copy h1,
@@ -1652,36 +1628,6 @@ footer p { margin: 0; }
 .source-a { color: var(--green); }
 .source-b { color: var(--orange); }
 
-.live2d-stage::before {
-  width: 15%;
-  height: 2.2%;
-  bottom: 4.7%;
-  background: radial-gradient(ellipse, rgba(32, 43, 70, .2), rgba(32, 43, 70, .055) 44%, transparent 72%);
-  filter: blur(6px);
-  transform: translateX(-50%);
-}
-
-.stage-ambient-light {
-  width: 54%;
-  height: 74%;
-  background: radial-gradient(circle, rgb(var(--stage-light-rgb) / .23), rgb(var(--stage-light-rgb) / .075) 42%, transparent 72%);
-  filter: blur(24px);
-  opacity: calc(.13 + var(--music-energy-long, 0) * .25);
-  transform: translateX(-50%) scale(calc(1 + var(--music-energy-long, 0) * .025));
-  transition: background .8s ease;
-}
-
-.stage-floor-light {
-  width: 31%;
-  height: 5.6%;
-  bottom: 4.5%;
-  background: radial-gradient(ellipse, rgb(var(--stage-light-rgb) / .34), rgb(var(--stage-light-rgb) / .075) 52%, transparent 74%);
-  filter: blur(11px);
-  opacity: calc(.08 + var(--music-bass, 0) * .13 + var(--beat-pulse, 0) * .16);
-  transform: translateX(-50%) scaleX(calc(1 + var(--beat-pulse, 0) * .035));
-  transition: background .8s ease;
-}
-
 .stage-particles {
   position: absolute;
   z-index: 2;
@@ -1700,7 +1646,7 @@ footer p { margin: 0; }
   border-radius: 50%;
   background: rgb(var(--stage-light-rgb) / .62);
   filter: blur(.5px);
-  opacity: calc(var(--particle-strength, 0) * .2);
+  opacity: calc(var(--particle-strength, 0) * .34);
   animation: mote-rise var(--particle-duration) var(--particle-delay) ease-out infinite;
 }
 
@@ -1872,11 +1818,35 @@ footer p { margin: 0; }
 }
 
 .app-shell.is-focus-mode .site-header {
-  opacity: .32;
-  transform: translateY(-7px);
+  opacity: 1;
+  transform: none;
+  background: transparent;
+  border-bottom-color: transparent;
+  pointer-events: none;
 }
 
-.app-shell.is-focus-mode .site-header:hover { opacity: 1; transform: translateY(0); }
+.app-shell.is-focus-mode .site-header .brand,
+.app-shell.is-focus-mode .header-session,
+.app-shell.is-focus-mode .session-action-button,
+.app-shell.is-focus-mode .local-note {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.app-shell.is-focus-mode .focus-mode-button {
+  position: fixed;
+  z-index: 70;
+  top: 17px;
+  right: 20px;
+  min-width: 112px;
+  color: var(--ink);
+  background: rgba(255, 252, 247, .9);
+  border-color: rgba(32, 43, 70, .2);
+  box-shadow: 0 8px 24px rgba(32, 43, 70, .09);
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+}
+
 .app-shell.is-focus-mode .player-hero-copy,
 .app-shell.is-focus-mode .file-grid,
 .app-shell.is-focus-mode .file-toolbar,
@@ -1892,12 +1862,6 @@ footer p { margin: 0; }
 
 .app-shell.is-focus-mode .live2d-stage-player {
   min-height: calc(100vh - 76px);
-}
-
-.app-shell.is-focus-mode .player-hero::before {
-  width: min(900px, 76vw);
-  height: 84vh;
-  top: 0;
 }
 
 .app-shell.is-focus-mode .workspace {
@@ -1923,15 +1887,78 @@ footer p { margin: 0; }
 .app-shell.is-focus-mode .timeline {
   height: 50px;
   margin: 0 0 4px;
-  opacity: .62;
+  opacity: 1;
   transition: opacity .2s ease;
 }
 
 .app-shell.is-focus-mode .timeline:hover { opacity: 1; }
 .app-shell.is-focus-mode .waveform { height: 18px; }
+.app-shell.is-focus-mode .wave-row {
+  opacity: .18;
+  filter: saturate(.45);
+  transition: opacity .2s ease, filter .2s ease, background .2s ease;
+}
+.app-shell.is-focus-mode .wave-row.is-audible {
+  opacity: .72;
+  filter: saturate(.9);
+}
+.app-shell.is-focus-mode .wave-row.is-playing {
+  opacity: 1;
+  filter: saturate(1.2);
+}
+.app-shell.is-focus-mode .wave-a.is-playing { background: rgba(91, 141, 134, .09); }
+.app-shell.is-focus-mode .wave-b.is-playing { background: rgba(212, 95, 115, .085); }
+.app-shell.is-focus-mode .wave-row.is-audible .wave-label { color: var(--ink); }
 .app-shell.is-focus-mode .controls { min-height: 62px; border: 0; }
 .app-shell.is-focus-mode .play-button { width: 46px; height: 46px; }
 .app-shell.is-focus-mode .camera-capsule { top: auto; bottom: 205px; }
+
+/* Focus mode is a stage change, so both directions receive their own motion.
+   Exit restores the surrounding listening desk in layers instead of snapping
+   every hidden element back on the same frame. */
+@keyframes focus-stage-enter {
+  from { opacity: .82; transform: scale(.985); filter: saturate(.82); }
+  to { opacity: 1; transform: scale(1); filter: saturate(1); }
+}
+
+@keyframes focus-stage-exit {
+  from { opacity: .9; transform: scale(1.025); filter: saturate(1.08); }
+  to { opacity: 1; transform: scale(1); filter: saturate(1); }
+}
+
+@keyframes focus-desk-enter {
+  from { opacity: 0; transform: translateY(18px) scale(.975); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes focus-desk-exit {
+  from { opacity: 0; transform: translateY(-14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.app-shell.focus-transition-enter .live2d-stage-player {
+  animation: focus-stage-enter .68s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.app-shell.focus-transition-enter .player {
+  animation: focus-desk-enter .58s .06s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.app-shell.focus-transition-exit .live2d-stage-player {
+  animation: focus-stage-exit .72s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.app-shell.focus-transition-exit .track-score-strip,
+.app-shell.focus-transition-exit .site-header .brand,
+.app-shell.focus-transition-exit .header-session,
+.app-shell.focus-transition-exit .session-action-button,
+.app-shell.focus-transition-exit .local-note {
+  animation: focus-desk-exit .54s .08s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.app-shell.focus-transition-exit .workspace .player {
+  animation: focus-desk-enter .64s .04s cubic-bezier(.16, 1, .3, 1) both;
+}
 
 @media (max-width: 900px) {
   .header-actions { gap: 10px; }
@@ -1958,11 +1985,16 @@ footer p { margin: 0; }
   .app-shell.is-focus-mode .controls { grid-template-columns: 1fr auto; gap: 8px; }
   .app-shell.is-focus-mode .ab-switch { grid-column: 1 / -1; }
   .app-shell.is-focus-mode .camera-capsule { top: auto; bottom: 184px; }
+  .scene-curtain-copy strong { flex-direction: column; align-items: center; gap: 0; }
+  .scene-curtain-line-one { top: calc(50% - 96px); }
+  .scene-curtain-line-two { top: calc(50% + 96px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .stage-particles span { animation: none; opacity: 0; }
-  ::view-transition-group(*) { animation-duration: .01ms !important; }
+  .scene-curtain { display: none; }
+  .app-shell.focus-transition-enter *,
+  .app-shell.focus-transition-exit * { animation: none !important; }
 }
 
 /* Record-book listening room — structural redesign. No listening controls or
@@ -2052,12 +2084,6 @@ footer p { margin: 0; }
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 108px minmax(560px, 1fr);
   isolation: isolate;
-}
-
-.player-hero::before {
-  width: 760px;
-  height: 560px;
-  top: 112px;
 }
 
 .track-score-strip {
@@ -2470,6 +2496,8 @@ footer p { margin: 0; }
   color: var(--green);
 }
 
+.track-score-strip .file-icon { align-self: start; }
+
 .track-score-strip .file-icon svg,
 .track-score-strip .upload-icon svg {
   width: 17px;
@@ -2542,4 +2570,105 @@ footer p { margin: 0; }
 
   .live2d-stage-player .camera-capsule { padding-inline: 5px; }
   .camera-capsule button { padding-inline: 7px; }
+}
+
+/* Focus choreography — kept last so it can temporarily override the final
+   focus layout while the outgoing desk completes its exit. The Live2D camera
+   itself is eased inside the Pixi rig; this layer only stages surrounding UI. */
+.player-hero,
+.live2d-stage-player {
+  transition:
+    min-height .86s cubic-bezier(.16, 1, .3, 1),
+    width .86s cubic-bezier(.16, 1, .3, 1),
+    margin .86s cubic-bezier(.16, 1, .3, 1);
+}
+
+@keyframes focus-chrome-leave {
+  0% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  62% { opacity: .18; }
+  100% { opacity: 0; transform: translateY(-26px) scale(.975); filter: blur(3px); }
+}
+
+@keyframes focus-chrome-return {
+  from { opacity: 0; transform: translateY(-22px) scale(.98); filter: blur(3px); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+@keyframes focus-console-arrive {
+  from { opacity: 0; transform: translateY(34px) scale(.965); filter: blur(4px); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+@keyframes focus-button-enter {
+  0% { opacity: 0; transform: translateX(58px) rotate(2deg); }
+  100% { opacity: 1; transform: translateX(0) rotate(0); }
+}
+
+@keyframes focus-button-exit {
+  0% { opacity: 0; transform: translateX(-28px) rotate(-1.5deg); }
+  100% { opacity: 1; transform: translateX(0) rotate(0); }
+}
+
+@keyframes focus-camera-control-enter {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes focus-camera-control-exit {
+  from { opacity: 0; transform: translateY(-14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.app-shell.focus-transition-enter .live2d-stage-player,
+.app-shell.focus-transition-exit .live2d-stage-player { animation: none; }
+
+.app-shell.is-focus-mode.focus-transition-enter .track-score-strip {
+  display: grid;
+  pointer-events: none;
+  animation: focus-chrome-leave .46s cubic-bezier(.4, 0, .6, 1) both;
+}
+
+.app-shell.is-focus-mode.focus-transition-enter .site-header .brand,
+.app-shell.is-focus-mode.focus-transition-enter .header-session,
+.app-shell.is-focus-mode.focus-transition-enter .session-action-button,
+.app-shell.is-focus-mode.focus-transition-enter .local-note {
+  pointer-events: none;
+  animation: focus-chrome-leave .4s cubic-bezier(.4, 0, .6, 1) both;
+}
+
+.app-shell.focus-transition-enter .workspace .player {
+  animation: focus-console-arrive .72s .16s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.app-shell.focus-transition-enter .focus-mode-button {
+  animation: focus-button-enter .62s .2s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.app-shell.focus-transition-enter .camera-capsule {
+  animation: focus-camera-control-enter .58s .34s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.app-shell.focus-transition-exit .track-score-strip,
+.app-shell.focus-transition-exit .site-header .brand,
+.app-shell.focus-transition-exit .header-session,
+.app-shell.focus-transition-exit .session-action-button,
+.app-shell.focus-transition-exit .local-note {
+  animation: focus-chrome-return .62s .26s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.app-shell.focus-transition-exit .workspace .player {
+  animation: focus-console-arrive .72s .12s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.app-shell.focus-transition-exit .focus-mode-button {
+  animation: focus-button-exit .62s .2s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.app-shell.focus-transition-exit .camera-capsule {
+  animation: focus-camera-control-exit .62s .28s cubic-bezier(.16, 1, .3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.focus-transition-enter *,
+  .app-shell.focus-transition-exit * { animation: none !important; }
 }

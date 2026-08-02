@@ -1,79 +1,62 @@
 # Audiff
 
-Audiff is a private, browser-based visual music player and A/B audio comparison tool. Load one track to listen with an interactive Live2D companion, or load two versions and switch between them on one sample-accurate audio clock.
+Audiff is a private, browser-based visual music player and sample-accurate A/B comparison tool. Load one local track to listen with an interactive Live2D companion, or load two versions and switch between them without losing the shared playback position.
 
-![Audiff social preview](public/og.png)
+[Open the live app](https://wedoso.github.io/Audiff/) · [Architecture](docs/architecture.md)
 
-## What it does
+![Audiff landing page with Hiyori](docs/assets/landing.png)
 
-- Plays a single local track as a full visual listening experience.
-- Renders Live2D's Hiyori sample model locally with music-driven movement.
-- Maps low frequencies to body weight, mids to face and mouth movement, highs to hair and ribbon motion, and strong transients to authored gestures.
-- Lets pointer movement guide Hiyori's attention without confusing pointer interaction with audio-driven motion.
-- Decodes both files locally and starts them on one sample-accurate Web Audio clock.
-- Switches the audible source with an 18 ms crossfade to avoid clicks without masking meaningful differences.
-- Switches gain only—never seeks or changes playback speed during A/B comparison.
-- Shows real file-reading progress and a clear decoding state before playback is ready.
-- Uses the longer file for the shared timeline when durations differ.
-- Shows exactly where a shorter file ends and lets the longer file continue.
-- Generates lightweight waveform previews in the browser.
-- Supports drag-and-drop, file replacement, clearing both tracks, seeking, looping, volume control, and keyboard shortcuts.
-- Processes audio locally. Files are never uploaded or stored by the app.
+## Listening modes
 
-## Requirements
+### One-track listening
 
-- Node.js 22.13 or newer
-- npm 10 or newer (included with current Node.js releases)
-- A modern browser with Web Audio support
+![Audiff listening room](docs/assets/listening-room.png)
 
-## Install and run
+- Audio is decoded and analyzed locally in the current browser tab.
+- Live2D's official Hiyori `hiyori_m01` motion leads the listening performance.
+- Learned body beats add restrained nod accents without replacing the authored pose.
+- A solid A/B-colored disc accumulates three low-frequency size tiers, then releases slowly instead of flashing on every transient.
+- Director mode frames phrase-scale energy automatically; the mouse wheel switches to manual framing.
 
-```bash
-git clone https://github.com/wedoso/Audiff.git
-cd Audiff
-npm ci
-npm run dev
-```
+### Focus mode
 
-Open [http://localhost:5173](http://localhost:5173).
+![Audiff Focus mode](docs/assets/focus-mode.png)
 
-For a production build:
+Press `F` to move into a close listening view. Hiyori's camera pushes in while the score strip, header context, camera controls, and transport enter or leave in a staged transition. The existing waveform and A/B selector remain available—Focus mode does not create a second control system.
 
-```bash
-npm run build
-npm run preview
-```
+### Two-track comparison
 
-The production output is written to `dist/`. It contains only static HTML, CSS, JavaScript, and image files; no Node.js server is required after the build.
+- Both decoded files start from one `AudioContext` clock.
+- Switching A/B changes gain only; it never seeks, restarts, or changes playback speed.
+- An 18 ms gain crossfade prevents clicks without hiding meaningful differences.
+- The longer track defines the shared timeline; the shorter track's endpoint is marked explicitly.
+- Hiyori's gaze follows the currently audible track while comparison playback is active.
 
-## Automatic GitHub Pages deployment
+## Live2D behavior
 
-The repository includes `.github/workflows/deploy-pages.yml`. Every push to `main` or `master` installs dependencies, runs the checks, builds the static site, and deploys `dist/` to GitHub Pages.
+Audiff uses Hiyori's official motion as the primary performance instead of rebuilding character movement from raw coordinates.
 
-After pushing the repository to GitHub:
+- **Playing:** the official `Idle[0]` loop supplies coordinated face, head, torso, arm, hair, and ribbon movement. A queue watchdog restarts that same motion only if the SDK genuinely has no active listening motion.
+- **Paused:** the authored motion stops and its complete pose eases to neutral over 680 ms. SDK blink, Natural Breath, pointer focus, Physics, and subtle secondary motion remain alive.
+- **Loop continuity:** six non-matching endpoints in the official 4.7-second clip are corrected over the final 720 ms using Cubism's actual motion clock.
+- **Beat response:** broadband and bass onsets learn a per-track 0.5–1.0 second body groove. Scheduled beats produce one eased 360 ms nod accent rather than hi-hat-speed twitching.
 
-1. Open **Settings → Pages** in the GitHub repository.
-2. Set **Source** to **GitHub Actions**.
-3. Push to `main` or `master`, or run the workflow manually from the **Actions** tab.
+See [docs/architecture.md](docs/architecture.md) for parameter ownership, signal processing, camera rules, transitions, and deployment invariants.
 
-The Vite build uses relative asset paths, so it works both at a domain root and under a GitHub Pages repository path.
+## Privacy
 
-### Other static hosts
-
-For Netlify, Cloudflare Pages, Vercel static hosting, S3, or similar services, use:
-
-- Build command: `npm run build`
-- Publish directory: `dist`
-- Required server functions: none
+Audio files, decoded buffers, waveform peaks, and analysis data stay inside the current tab. Audiff has no backend, account system, database, cookies, analytics, upload endpoint, or persistent audio storage.
 
 ## Use
 
-1. Choose or drop one audio file to enter Live2D listening mode.
-2. Press the central play button or the space bar. Hiyori's continuous movement and gestures are driven by the audible track.
-3. Optionally add Audio B to enter synchronized comparison mode.
-4. Press **1** / **A** for Audio A or **2** / **B** for Audio B. Playback and Hiyori stay at the same timestamp.
-5. Drag anywhere on the timeline to seek. Use the arrow keys to jump five seconds.
-6. Use **Clear both tracks** to return to the welcome experience.
+1. Choose or drop one audio file.
+2. Press the central play button or `Space`.
+3. Optionally add Audio B for synchronized comparison.
+4. Use `1` / `A` for Audio A and `2` / `B` for Audio B.
+5. Drag the timeline to seek, or use the arrow keys to move five seconds.
+6. Scroll over Hiyori for manual camera zoom; choose **Director** to resume automatic framing.
+7. Press `F` for Focus mode and `Esc` to leave it.
+8. Choose **Clear session** to return through the reverse scene transition.
 
 ### Keyboard shortcuts
 
@@ -84,53 +67,70 @@ For Netlify, Cloudflare Pages, Vercel static hosting, S3, or similar services, u
 | `2` or `B` | Listen to Audio B |
 | `←` / `→` | Seek backward / forward five seconds |
 | `L` | Toggle timeline loop |
+| `F` | Enter or leave Focus mode |
+| `Esc` | Leave Focus mode |
 
-## Supported files
+## Supported audio
 
-Compatibility depends on the browser. Common formats such as WAV, MP3, M4A/AAC, FLAC, OGG, Opus, WebM audio, and AIFF are accepted when the browser's Web Audio decoder supports them.
+Compatibility depends on the browser's Web Audio decoder. Audiff accepts common WAV, MP3, M4A/AAC, FLAC, OGG, Opus, WebM audio, and AIFF files. Files are fully decoded in memory so both tracks can share an exact clock; files larger than 300 MB are rejected to protect the tab.
 
-Files are fully decoded in browser memory so both tracks can share one exact clock. Files larger than 300 MB are rejected to protect the tab from excessive memory use. Long or lossless files may take a moment to decode.
+## Local development
 
-## Duration mismatch behavior
+Requirements: Node.js 22.13 or newer and npm 10 or newer.
 
-The shared player always uses the longer duration. If the selected source has already ended at the current timestamp, Audiff intentionally plays silence and labels that state; switch to the longer source to continue hearing audio. Seeking back into the overlapping range reactivates both files and restores synchronized comparison.
-
-## Project structure
-
-```text
-index.html         Static document and social metadata
-src/
-  App.tsx          Audio engine and complete user interface
-  main.tsx         Browser entry point
-  index.css        Responsive visual system
-public/
-  og.png           Social preview image
-tests/
-  static-build.test.mjs
-.github/workflows/
-  deploy-pages.yml Automatic GitHub Pages deployment
+```bash
+git clone https://github.com/wedoso/Audiff.git
+cd Audiff
+npm ci
+npm run dev
 ```
 
-The app uses React, Vite, the Web Audio API, PixiJS, the Live2D Cubism Web runtime, and Lucide icons. The official Hiyori sample model and Cubism Core are copied into the static build, so GitHub Pages does not require a CDN or server runtime. It has no backend, account system, database, or upload service.
+Open [http://localhost:5173](http://localhost:5173).
 
-## Live2D model and runtime
-
-Hiyori Momose is a sample model created by Live2D. Its model-specific notice is included at `public/live2d/hiyori/LICENSE-HIYORI.txt`. Use and redistribution of the sample model and Cubism runtime remain subject to Live2D's Free Material License Agreement and Terms of Use; review those terms before publishing or commercial use. The rest of Audiff remains covered by the repository's MIT license.
-
-## Quality checks
-
-Run the complete validation suite:
+Run the complete validation suite with:
 
 ```bash
 npm run check
 ```
 
-The individual commands are `npm run lint`, `npm run build`, and `npm test`.
+This runs ESLint, TypeScript, the Vite production build, and the static architecture regression suite.
 
-## Privacy
+## Deployment
 
-File data and decoded buffers stay in the current browser tab and are released when tracks are removed or the page closes. No analytics, cookies, network upload, or persistent storage is used.
+`npm run build` emits a fully static `dist/` directory. Vite uses relative asset paths, so the same output works at a domain root or a GitHub Pages repository path.
 
-## License
+The included [GitHub Pages workflow](.github/workflows/deploy-pages.yml) runs `npm ci`, `npm run check`, and deploys `dist/` on every push to `main` or `master`. Configure **Settings → Pages → Source** as **GitHub Actions** once for a new fork.
 
-Audiff is open-source software licensed under the [MIT License](LICENSE). You may use, copy, modify, distribute, and privately or commercially deploy it, provided the copyright and license notice are retained.
+Other static hosts can use:
+
+- Build command: `npm run build`
+- Publish directory: `dist`
+- Required server functions: none
+
+## Project structure
+
+```text
+index.html                 Static document and social metadata
+src/
+  App.tsx                  Audio engine and complete interface
+  Live2DStage.tsx          Hiyori motion, camera, shadow, and stage visuals
+  audioVisual.ts           Web Audio features and transient signal
+  index.css                Responsive visual and motion system
+public/
+  live2d/hiyori/           Official Hiyori model, motion, physics, and notice
+  live2d/live2dcubismcore.min.js
+  og.png                   Current social preview
+docs/
+  architecture.md          Runtime design and invariants
+  assets/                  README screenshots
+tests/
+  static-build.test.mjs    Build and architecture regressions
+.github/workflows/
+  deploy-pages.yml         GitHub Pages CI/CD
+```
+
+## Live2D notice and license
+
+Hiyori Momose is a sample model created by Live2D. The model notice is included at [`public/live2d/hiyori/LICENSE-HIYORI.txt`](public/live2d/hiyori/LICENSE-HIYORI.txt). Use and redistribution of the sample model and Cubism runtime remain subject to Live2D's Free Material License Agreement and Terms of Use; review them before publishing or commercial use.
+
+Audiff's own source code is licensed under the [MIT License](LICENSE).
