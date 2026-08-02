@@ -52,14 +52,21 @@ export function sampleAnalyser(
   }
   const rms = Math.sqrt(squareSum / timeData.length);
   const energy = Math.min(1, rms * 3.6);
-  const rawTransient = Math.max(0, energy - previous.energy * 0.86) * 4.8;
+  const bass = Math.min(1, band(35, 190) * 1.7);
+  const mid = Math.min(1, band(190, 2400) * 1.55);
+  const treble = Math.min(1, band(2400, 10000) * 2);
+  // Percussive onsets are carried by both broadband amplitude and low-frequency
+  // flux. This keeps kick/snare timing legible without retriggering on a held note.
+  const energyRise = Math.max(0, energy - previous.energy);
+  const bassRise = Math.max(0, bass - previous.bass);
+  const rawTransient = Math.min(1, energyRise * 5.6 + bassRise * 3.4);
 
   return {
     energy: previous.energy * 0.32 + energy * 0.68,
-    bass: previous.bass * 0.38 + Math.min(1, band(35, 190) * 1.7) * 0.62,
-    mid: previous.mid * 0.4 + Math.min(1, band(190, 2400) * 1.55) * 0.6,
-    treble: previous.treble * 0.46 + Math.min(1, band(2400, 10000) * 2) * 0.54,
-    transient: Math.max(rawTransient, previous.transient * 0.78),
+    bass: previous.bass * 0.38 + bass * 0.62,
+    mid: previous.mid * 0.4 + mid * 0.6,
+    treble: previous.treble * 0.46 + treble * 0.54,
+    transient: Math.max(rawTransient, previous.transient * 0.7),
     isPlaying: true,
     isComparing: previous.isComparing,
     source,
