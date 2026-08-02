@@ -1,3 +1,11 @@
+# Layouts
+
+Audiff is a single-page application. `App` owns the complete shell: header, listening scene, track workspace, transport, keyboard help, and footer.
+
+## App shell
+- Path: `src/App.tsx`
+
+```tsx
 import {
   ArrowLeftRight,
   Check,
@@ -895,3 +903,5 @@ export default function Home() {
     </main>
   );
 }
+```
+

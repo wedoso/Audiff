@@ -1,3 +1,20 @@
+# Theme
+
+## Compact token summary
+
+- Product character: warm editorial listening room matching Hiyori's cream uniform; restrained, intimate, locally processed.
+- Background: warm ivory `#f8f4ed` family with a subtle dotted paper grid.
+- Ink: deep navy `#202b46`; muted copy is blue-gray.
+- Track A: muted teal; Track B: coral rose. Green is reserved for ready/live state.
+- Typography: system sans for interface and labels; Georgia-style serif for large editorial headlines.
+- Shape: mostly 14–26px radii, thin low-contrast borders, minimal shadows.
+- Motion: internal Live2D pose only; adaptive onset nods, long-period amplitude variation, one eased blink writer, and Physics-driven secondary motion.
+- Lighting: narrow centered contact shadow plus separate A/B-colored ambient and floor pulses on strong onsets.
+- Breakpoints: 900px and 600px.
+
+## Raw global CSS
+
+```css
 :root {
   --font-geist-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --ink: #273148;
@@ -1367,3 +1384,5 @@ footer p { margin: 0; }
     border-radius: 20px 20px 8px 8px;
   }
 }
+```
+

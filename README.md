@@ -1,11 +1,15 @@
 # Audiff
 
-Audiff is a private, browser-based A/B audio comparison tool. Load two versions of the same recording, press play once, and switch between them on one sample-accurate audio clock.
+Audiff is a private, browser-based visual music player and A/B audio comparison tool. Load one track to listen with an interactive Live2D companion, or load two versions and switch between them on one sample-accurate audio clock.
 
 ![Audiff social preview](public/og.png)
 
 ## What it does
 
+- Plays a single local track as a full visual listening experience.
+- Renders Live2D's Hiyori sample model locally with music-driven movement.
+- Maps low frequencies to body weight, mids to face and mouth movement, highs to hair and ribbon motion, and strong transients to authored gestures.
+- Lets pointer movement guide Hiyori's attention without confusing pointer interaction with audio-driven motion.
 - Decodes both files locally and starts them on one sample-accurate Web Audio clock.
 - Switches the audible source with an 18 ms crossfade to avoid clicks without masking meaningful differences.
 - Switches gain only—never seeks or changes playback speed during A/B comparison.
@@ -64,12 +68,12 @@ For Netlify, Cloudflare Pages, Vercel static hosting, S3, or similar services, u
 
 ## Use
 
-1. Drop the first audio file on **A** and the second on **B**. You can also drop two files onto either zone at once.
-2. Wait for each track to finish reading and decoding. Its checkmark appears when it is ready.
-3. Press the central play button or the space bar.
-4. Press **1** / **A** for Audio A or **2** / **B** for Audio B. Playback stays at the same timestamp.
-5. Drag anywhere on the waveform timeline to seek. Use the arrow keys to jump five seconds.
-6. Use **Clear both tracks** to stop playback and reset the comparison.
+1. Choose or drop one audio file to enter Live2D listening mode.
+2. Press the central play button or the space bar. Hiyori's continuous movement and gestures are driven by the audible track.
+3. Optionally add Audio B to enter synchronized comparison mode.
+4. Press **1** / **A** for Audio A or **2** / **B** for Audio B. Playback and Hiyori stay at the same timestamp.
+5. Drag anywhere on the timeline to seek. Use the arrow keys to jump five seconds.
+6. Use **Clear both tracks** to return to the welcome experience.
 
 ### Keyboard shortcuts
 
@@ -107,7 +111,11 @@ tests/
   deploy-pages.yml Automatic GitHub Pages deployment
 ```
 
-The app uses React, Vite, the Web Audio API, and Lucide icons. It has no server runtime, backend, account system, database, or upload service.
+The app uses React, Vite, the Web Audio API, PixiJS, the Live2D Cubism Web runtime, and Lucide icons. The official Hiyori sample model and Cubism Core are copied into the static build, so GitHub Pages does not require a CDN or server runtime. It has no backend, account system, database, or upload service.
+
+## Live2D model and runtime
+
+Hiyori Momose is a sample model created by Live2D. Its model-specific notice is included at `public/live2d/hiyori/LICENSE-HIYORI.txt`. Use and redistribution of the sample model and Cubism runtime remain subject to Live2D's Free Material License Agreement and Terms of Use; review those terms before publishing or commercial use. The rest of Audiff remains covered by the repository's MIT license.
 
 ## Quality checks
 
