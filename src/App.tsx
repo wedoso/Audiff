@@ -68,6 +68,7 @@ type SceneTransitionDirection = "enter" | "exit";
 let sceneCoverTimer: number | null = null;
 let sceneCleanupTimer: number | null = null;
 let sceneTransitionFrame: number | null = null;
+let sceneRevealFrame: number | null = null;
 
 function withSceneTransition(update: () => void, direction: SceneTransitionDirection): Promise<void> {
   const commit = () => flushSync(update);
@@ -79,6 +80,7 @@ function withSceneTransition(update: () => void, direction: SceneTransitionDirec
   if (sceneCoverTimer !== null) window.clearTimeout(sceneCoverTimer);
   if (sceneCleanupTimer !== null) window.clearTimeout(sceneCleanupTimer);
   if (sceneTransitionFrame !== null) window.cancelAnimationFrame(sceneTransitionFrame);
+  if (sceneRevealFrame !== null) window.cancelAnimationFrame(sceneRevealFrame);
   root.classList.remove("is-scene-transitioning", "is-scene-covering", "is-scene-curtain-open", "is-scene-revealing");
   root.dataset.sceneTransition = direction;
   void root.offsetWidth;
@@ -92,15 +94,24 @@ function withSceneTransition(update: () => void, direction: SceneTransitionDirec
     delete root.dataset.sceneTransition;
     sceneCoverTimer = null;
     sceneCleanupTimer = null;
+    sceneRevealFrame = null;
   };
   return new Promise((resolve) => {
     // Commit only after the solid curtain covers the viewport. Pixi's canvas is
     // never snapshotted or duplicated, so Hiyori remains one continuous render.
     sceneCoverTimer = window.setTimeout(() => {
       commit();
-      root.classList.remove("is-scene-covering");
-      root.classList.add("is-scene-revealing");
-      resolve();
+      // Keep the curtain fully opaque for two paint opportunities. React lays
+      // out the destination on the first; Pixi applies and renders its snapped
+      // camera on the second. Reveal only after the whole scene is ready.
+      sceneRevealFrame = window.requestAnimationFrame(() => {
+        sceneRevealFrame = window.requestAnimationFrame(() => {
+          root.classList.remove("is-scene-covering");
+          root.classList.add("is-scene-revealing");
+          sceneRevealFrame = null;
+          resolve();
+        });
+      });
     }, 390);
     sceneCleanupTimer = window.setTimeout(cleanup, 1040);
   });

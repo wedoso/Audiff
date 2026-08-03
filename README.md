@@ -22,7 +22,7 @@ Audiff is a private, browser-based visual music player and sample-accurate A/B c
 
 ![Audiff Focus mode](docs/assets/focus-mode.png)
 
-Press `F` to move into a close listening view. Hiyori's camera pushes in while the score strip, header context, camera controls, and transport enter or leave in a staged transition. The existing waveform and A/B selector remain available—Focus mode does not create a second control system.
+Press `F` to move into a close listening view. Hiyori and the solid music disc begin moving at the same moment the score strip and header context withdraw; exit reverses the same shared timeline. The persistent Pixi canvas is never recreated or continuously resized during the shot. The existing waveform and A/B selector remain available—Focus mode does not create a second control system.
 
 ### Two-track comparison
 

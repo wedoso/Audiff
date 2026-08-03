@@ -99,8 +99,10 @@ Focus mode changes the composition rather than simply hiding elements:
 - the transport reforms as a floating desk;
 - the Focus and camera controls enter from their new edges;
 - Hiyori's Pixi camera receives an additional 0.2× close-up bias;
-- the stage height, camera rig, model scale, and contact shadow interpolate continuously;
+- the stage switches layout once while the persistent camera rig, model scale, and contact shadow interpolate continuously;
 - leaving Focus reverses the camera before the score, header, and desk return in staggered layers.
+
+The Live2D canvas remains mounted throughout. Stage height is not CSS-tweened because that would repeatedly clear and resize Pixi's WebGL backing buffer. The leaving score strip becomes an absolute overlay immediately, releasing its layout space while it fades; Hiyori's camera rig and the solid disc then start their FLIP-style movement on the same frame. Resize observations are coalesced, and the renderer repaints synchronously after a genuine size change.
 
 The standard waveform and A/B selector remain the only track controls in both layouts. `prefers-reduced-motion: reduce` disables decorative choreography while preserving the state change.
 
@@ -110,6 +112,7 @@ The standard waveform and A/B selector remain the only track controls in both la
 
 - a solid A/B-tinted circle expands to cover the viewport;
 - React commits the layout change only after the curtain is opaque;
+- the curtain remains opaque for two additional animation frames so React layout and the Pixi camera both finish before reveal;
 - the persistent Pixi/Live2D canvas is never captured or duplicated;
 - the curtain recedes while track score and console enter in restrained stagger;
 - clearing the session uses the same sequence with the alternate accent color.

@@ -1,6 +1,6 @@
 import type { Application as PixiApplication } from "pixi.js";
 import { Lock, Mouse, ScanFace, ScanLine, Sparkles } from "lucide-react";
-import { MutableRefObject, useEffect, useRef, useState } from "react";
+import { MutableRefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AudioVisualFeatures } from "./audioVisual";
 
 type StageVariant = "welcome" | "player";
@@ -111,6 +111,11 @@ export default function Live2DStage({
 }: Live2DStageProps) {
   const stageRef = useRef<HTMLElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
+  const musicDiscRef = useRef<HTMLDivElement>(null);
+  const previousDiscCenterRef = useRef<{ x: number; y: number } | null>(null);
+  const previousDiscFocusRef = useRef(focusMode);
+  const musicDiscAnimationRef = useRef<Animation | null>(null);
+  const sceneLayoutSnapRef = useRef(false);
   const variantRef = useRef(variant);
   const previousVariantRef = useRef(variant);
   const previousFocusModeRef = useRef(focusMode);
@@ -127,13 +132,15 @@ export default function Live2DStage({
   const [zoomReadout, setZoomReadout] = useState(100);
   const [showZoom, setShowZoom] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const enteringPlayer = previousVariantRef.current === "welcome" && variant === "player";
     const leavingPlayer = previousVariantRef.current === "player" && variant === "welcome";
     const changingFocus = previousFocusModeRef.current !== focusMode;
     variantRef.current = variant;
     focusModeRef.current = focusMode;
     if (changingFocus) focusCameraTransitionUntilRef.current = performance.now() + 1100;
+    const sceneCovered = document.documentElement.classList.contains("is-scene-covering");
+    if ((enteringPlayer || leavingPlayer) && sceneCovered) sceneLayoutSnapRef.current = true;
     if (enteringPlayer) {
       // Establish an intimate first shot before the phrase director takes over.
       // The camera rig moves; Hiyori's authored model coordinates stay untouched.
@@ -153,6 +160,29 @@ export default function Live2DStage({
     layoutRef.current?.();
   }, [focusMode, variant]);
 
+  useLayoutEffect(() => {
+    const disc = musicDiscRef.current;
+    if (!disc) return;
+    const bounds = disc.getBoundingClientRect();
+    const nextCenter = { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+    const previousCenter = previousDiscCenterRef.current;
+    const changedFocus = previousDiscFocusRef.current !== focusMode;
+    musicDiscAnimationRef.current?.cancel();
+    if (previousCenter && changedFocus && variant === "player" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const offsetX = previousCenter.x - nextCenter.x;
+      const offsetY = previousCenter.y - nextCenter.y;
+      musicDiscAnimationRef.current = disc.animate(
+        [
+          { translate: `${offsetX}px ${offsetY}px` },
+          { translate: "0 0" },
+        ],
+        { duration: 880, easing: "cubic-bezier(.16, 1, .3, 1)" },
+      );
+    }
+    previousDiscCenterRef.current = nextCenter;
+    previousDiscFocusRef.current = focusMode;
+  }, [focusMode, variant]);
+
   useEffect(() => {
     cameraModeRef.current = cameraMode;
   }, [cameraMode]);
@@ -164,6 +194,7 @@ export default function Live2DStage({
     let disposed = false;
     let app: PixiApplication | null = null;
     let resizeObserver: ResizeObserver | null = null;
+    let resizeFrame: number | null = null;
     let cleanupPointer: (() => void) | null = null;
     let cleanupMotionPose: (() => void) | null = null;
 
@@ -225,12 +256,31 @@ export default function Live2DStage({
         let targetRigY = host.clientHeight * 0.54;
         let currentRigX = targetRigX;
         let currentRigY = targetRigY;
+        let currentPortraitOffset = 0;
         let layoutInitialized = false;
         let isCompactLayout = host.clientWidth < 600;
+        let previousHostBounds: DOMRect | null = null;
 
+        let rendererWidth = 0;
+        let rendererHeight = 0;
         const layout = () => {
           if (!app || !host) return;
-          app.renderer.resize(Math.max(1, host.clientWidth), Math.max(1, host.clientHeight));
+          const nextWidth = Math.max(1, Math.round(host.clientWidth));
+          const nextHeight = Math.max(1, Math.round(host.clientHeight));
+          const nextHostBounds = host.getBoundingClientRect();
+          if (layoutInitialized && previousHostBounds) {
+            // Keep Hiyori at the same viewport pixel while the header/score strip
+            // changes the stage's origin. The camera then eases from that exact
+            // screen-space pose into its new focus composition.
+            currentRigX += previousHostBounds.left - nextHostBounds.left;
+            currentRigY += previousHostBounds.top - nextHostBounds.top;
+          }
+          previousHostBounds = nextHostBounds;
+          if (nextWidth !== rendererWidth || nextHeight !== rendererHeight) {
+            rendererWidth = nextWidth;
+            rendererHeight = nextHeight;
+            app.renderer.resize(nextWidth, nextHeight);
+          }
           const isWelcome = variantRef.current === "welcome";
           const isCompact = host.clientWidth < 600;
           isCompactLayout = isCompact;
@@ -249,10 +299,19 @@ export default function Live2DStage({
             cameraRig.position.set(currentRigX, currentRigY);
             layoutInitialized = true;
           }
+          // Resizing a WebGL backing buffer clears it. Repaint synchronously so
+          // a focus layout change cannot expose that cleared frame as a flash.
+          app.render();
         };
         layoutRef.current = layout;
         layout();
-        resizeObserver = new ResizeObserver(layout);
+        resizeObserver = new ResizeObserver(() => {
+          if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+          resizeFrame = requestAnimationFrame(() => {
+            resizeFrame = null;
+            layout();
+          });
+        });
         resizeObserver.observe(host);
 
         let pointerX = 0;
@@ -456,6 +515,21 @@ export default function Live2DStage({
             value + (target - value) * (1 - Math.exp(-speed * dt))
           );
           const listening = features.isPlaying ? 1 : 0;
+
+          if (sceneLayoutSnapRef.current) {
+            cameraZoom = variantRef.current === "player" ? manualZoomRef.current : 1;
+            currentCameraZoomRef.current = cameraZoom;
+            currentModelScale = targetModelScale;
+            currentRigX = targetRigX;
+            currentRigY = targetRigY;
+            const snapPortraitFactor = focusModeRef.current || isCompactLayout ? 0.14 : 0.29;
+            currentPortraitOffset = Math.max(0, cameraZoom - 1) * host.clientHeight * snapPortraitFactor;
+            model.scale.set(currentModelScale);
+            contactShadow.scale.set(currentModelScale);
+            cameraRig.position.set(currentRigX, currentRigY + currentPortraitOffset);
+            cameraRig.scale.set(cameraZoom);
+            sceneLayoutSnapRef.current = false;
+          }
 
           if (features.isPlaying && !wasListening) {
             // Playback hands the whole performance back to Hiyori's official m01
@@ -665,8 +739,13 @@ export default function Live2DStage({
           model.scale.set(currentModelScale);
           contactShadow.scale.set(currentModelScale);
           const portraitOffsetFactor = focusModeRef.current || isCompactLayout ? 0.14 : 0.29;
-          const portraitOffset = Math.max(0, cameraZoom - 1) * host.clientHeight * portraitOffsetFactor;
-          cameraRig.position.set(currentRigX, currentRigY + portraitOffset);
+          const targetPortraitOffset = Math.max(0, cameraZoom - 1) * host.clientHeight * portraitOffsetFactor;
+          currentPortraitOffset = follow(
+            currentPortraitOffset,
+            targetPortraitOffset,
+            focusCameraTransitioning ? 2.8 : 4.2,
+          );
+          cameraRig.position.set(currentRigX, currentRigY + currentPortraitOffset);
           cameraRig.scale.set(cameraZoom);
 
           if (lastSource !== features.source) {
@@ -725,8 +804,10 @@ export default function Live2DStage({
       disposed = true;
       layoutRef.current = null;
       resizeObserver?.disconnect();
+      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
       cleanupPointer?.();
       cleanupMotionPose?.();
+      musicDiscAnimationRef.current?.cancel();
       if (zoomTimerRef.current !== null) window.clearTimeout(zoomTimerRef.current);
       try {
         app?.destroy(true, { children: true, texture: true, baseTexture: true });
@@ -746,7 +827,7 @@ export default function Live2DStage({
 
   return (
     <section ref={stageRef} className={`live2d-stage live2d-stage-${variant} light-${activeSource === 0 ? "a" : "b"} ${isPlaying ? "is-playing" : "is-paused"} ${focusMode ? "is-focused" : ""}`} aria-label="Interactive music companion">
-      <div className="stage-music-disc" />
+      <div ref={musicDiscRef} className="stage-music-disc" />
       <div className="stage-particles" aria-hidden="true">
         {PARTICLES.map(([left, top, delay, duration], index) => (
           <span

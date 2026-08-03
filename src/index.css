@@ -2578,9 +2578,16 @@ html[data-scene-transition="exit"].is-scene-revealing .welcome-choices {
 .player-hero,
 .live2d-stage-player {
   transition:
-    min-height .86s cubic-bezier(.16, 1, .3, 1),
     width .86s cubic-bezier(.16, 1, .3, 1),
     margin .86s cubic-bezier(.16, 1, .3, 1);
+}
+
+/* The canvas backing store must not be resized on every frame of a CSS height
+   tween. Focus choreography comes from the persistent camera rig instead. */
+.live2d-stage-player,
+.live2d-canvas {
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 @keyframes focus-chrome-leave {
@@ -2624,6 +2631,10 @@ html[data-scene-transition="exit"].is-scene-revealing .welcome-choices {
 
 .app-shell.is-focus-mode.focus-transition-enter .track-score-strip {
   display: grid;
+  position: absolute;
+  z-index: 12;
+  inset: 0 0 auto;
+  width: 100%;
   pointer-events: none;
   animation: focus-chrome-leave .46s cubic-bezier(.4, 0, .6, 1) both;
 }

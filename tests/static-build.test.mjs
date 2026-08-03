@@ -125,6 +125,8 @@ test("drives Hiyori from meaningful per-track audio features", async () => {
   assert.doesNotMatch(stage, /model\.rotation =/u);
   assert.doesNotMatch(stage, /model\.position\.set\(/u);
   assert.doesNotMatch(stage, /addMusicParameter\("ParamHair/u);
+  assert.match(app, /analyserA\.fftSize = 1024/u);
+  assert.match(app, /analyserA\.smoothingTimeConstant = 0\.68/u);
   assert.match(styles, /--beat-pulse/u);
   assert.match(styles, /\.stage-music-disc/u);
   assert.doesNotMatch(styles, /\.stage-floor-light/u);
@@ -153,9 +155,10 @@ test("uses stable and unambiguous track state actions", async () => {
 });
 
 test("covers the landing/player swap without snapshotting the Live2D canvas", async () => {
-  const [app, styles] = await Promise.all([
+  const [app, styles, stage] = await Promise.all([
     readFile(new URL("src/App.tsx", root), "utf8"),
     readFile(new URL("src/index.css", root), "utf8"),
+    readFile(new URL("src/Live2DStage.tsx", root), "utf8"),
   ]);
 
   assert.match(app, /import \{ flushSync \} from "react-dom"/u);
@@ -166,6 +169,8 @@ test("covers the landing/player swap without snapshotting the Live2D canvas", as
   assert.match(app, /is listening\./u);
   assert.doesNotMatch(app, /scene-curtain-title">Audiff/u);
   assert.match(app, /sceneCoverTimer = window\.setTimeout\(\(\) => \{[\s\S]*?commit\(\);[\s\S]*?is-scene-revealing/u);
+  assert.match(app, /sceneRevealFrame = window\.requestAnimationFrame\(\(\) => \{[\s\S]*?sceneRevealFrame = window\.requestAnimationFrame/u);
+  assert.match(stage, /sceneLayoutSnapRef\.current = true/u);
   assert.doesNotMatch(app, /startViewTransition/u);
   assert.match(styles, /\.scene-curtain-disc/u);
   assert.match(styles, /html\.is-scene-curtain-open \.scene-curtain-disc/u);
@@ -176,9 +181,10 @@ test("covers the landing/player swap without snapshotting the Live2D canvas", as
 });
 
 test("animates both directions of Focus Mode", async () => {
-  const [app, styles] = await Promise.all([
+  const [app, styles, stage] = await Promise.all([
     readFile(new URL("src/App.tsx", root), "utf8"),
     readFile(new URL("src/index.css", root), "utf8"),
+    readFile(new URL("src/Live2DStage.tsx", root), "utf8"),
   ]);
 
   assert.match(app, /focusTransition \? `focus-transition-\$\{focusTransition\}`/u);
@@ -190,6 +196,14 @@ test("animates both directions of Focus Mode", async () => {
   assert.match(styles, /@keyframes focus-button-exit/u);
   assert.match(styles, /\.is-focus-mode\.focus-transition-enter \.track-score-strip/u);
   assert.match(styles, /@keyframes focus-camera-control-exit/u);
+  assert.match(styles, /The canvas backing store must not be resized/u);
+  assert.doesNotMatch(styles, /min-height \.86s/u);
+  assert.match(styles, /\.live2d-canvas \{[\s\S]*?backface-visibility: hidden/u);
+  assert.match(stage, /previousHostBounds\.top - nextHostBounds\.top/u);
+  assert.match(stage, /currentRigY \+= previousHostBounds\.top - nextHostBounds\.top/u);
+  assert.match(stage, /currentPortraitOffset = follow\(/u);
+  assert.match(stage, /disc\.animate\(/u);
+  assert.match(styles, /\.is-focus-mode\.focus-transition-enter \.track-score-strip \{[\s\S]*?position: absolute;/u);
 });
 
 test("keeps A/B switching and audible waveform emphasis in Focus Mode", async () => {
@@ -309,8 +323,12 @@ test("keeps phrase camera motion separate from Live2D music pose", async () => {
   assert.match(stage, /const phraseArc = \(1 - Math\.cos\(cameraPhase\)\) \* 0\.5/u);
   assert.match(stage, /const focusCameraBias = focusModeRef\.current \? 0\.2 : 0/u);
   assert.match(stage, /focusCameraTransitionUntilRef\.current/u);
+  assert.match(stage, /let lightTier = 0/u);
   assert.match(stage, /lightTierStep = timeSinceLightAccent > 1\.05 \? 1 : Math\.min\(3, lightTierStep \+ 1\)/u);
-  assert.match(stage, /--beat-tier/u);
+  assert.match(stage, /stage\.style\.setProperty\("--beat-tier", lightTier\.toFixed\(3\)\)/u);
+  assert.doesNotMatch(stage, /radialSpectrum|radialWaveform|RADIAL_CONTOUR/u);
+  assert.match(stage, /app\.render\(\)/u);
+  assert.match(stage, /resizeFrame = requestAnimationFrame/u);
   assert.match(stage, /Math\.max\(1\.42, Math\.min\(2\.1, autoZoom\)\)/u);
   assert.match(stage, /Math\.min\(2\.35, currentCameraZoomRef/u);
   assert.match(stage, /manualZoomRef\.current = 2\.12/u);
