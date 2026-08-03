@@ -1,9 +1,44 @@
 import assert from "node:assert/strict";
 import { access, readFile, readdir } from "node:fs/promises";
 import test from "node:test";
+import ts from "typescript";
 
 const root = new URL("../", import.meta.url);
 const dist = new URL("../dist/", import.meta.url);
+
+async function importTypeScriptModule(url) {
+  const source = await readFile(url, "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  return import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
+}
+
+test("parses multilingual, offset, repeated, and UTF-16 LRC lyrics", async () => {
+  const { decodeLrc, parseLrc } = await importTypeScriptModule(new URL("src/lrc.ts", root));
+  const parsed = parseLrc([
+    "[ti:多语言测试]",
+    "[ar:Audiff]",
+    "[offset:250]",
+    "[00:01.00]Hello",
+    "[00:02.5][00:03.500]简体中文",
+    "[00:04.00]繁體中文",
+    "[00:04.00]日本語",
+  ].join("\n"));
+
+  assert.equal(parsed.title, "多语言测试");
+  assert.equal(parsed.artist, "Audiff");
+  assert.deepEqual(parsed.lines, [
+    { time: 1.25, text: "Hello" },
+    { time: 2.75, text: "简体中文" },
+    { time: 3.75, text: "简体中文" },
+    { time: 4.25, text: "繁體中文\n日本語" },
+  ]);
+
+  const utf16 = Buffer.from("\ufeff[00:01.00]日本語", "utf16le");
+  const decoded = decodeLrc(utf16.buffer.slice(utf16.byteOffset, utf16.byteOffset + utf16.byteLength));
+  assert.match(decoded, /日本語/u);
+});
 
 test("produces a portable static site", async () => {
   const html = await readFile(new URL("index.html", dist), "utf8");

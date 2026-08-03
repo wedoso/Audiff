@@ -24,6 +24,14 @@ Audiff is a private, browser-based visual music player and sample-accurate A/B c
 
 Press `F` to move into a close listening view. Hiyori and the solid music disc begin moving at the same moment the score strip and header context withdraw; exit reverses the same shared timeline. The persistent Pixi canvas is never recreated or continuously resized during the shot. The existing waveform and A/B selector remain available—Focus mode does not create a second control system.
 
+### Timed LRC lyrics
+
+![Audiff displaying synchronized Japanese LRC lyrics](docs/assets/lyrics.png)
+
+Load an optional `.lrc` file after adding audio to place synchronized lyrics inside the listening room. The current line eases into the center of a softly masked lyric column and fills with the playback position; surrounding lines fade toward the edges without scrolling the page itself. Track A uses Audiff's green accent and Track B uses its rose accent, so the lyric treatment follows the audible source during A/B switching.
+
+The lyric font stack includes system fallbacks for English, Simplified and Traditional Chinese, and Japanese. UTF-8 and BOM-marked UTF-16 LRC files are supported, including global `[offset:]`, repeated timestamps, and multiple lyric lines at the same time. Lyrics are optional and never leave the browser tab.
+
 ### Two-track comparison
 
 - Both decoded files start from one `AudioContext` clock.
@@ -45,18 +53,19 @@ See [docs/architecture.md](docs/architecture.md) for parameter ownership, signal
 
 ## Privacy
 
-Audio files, decoded buffers, waveform peaks, and analysis data stay inside the current tab. Audiff has no backend, account system, database, cookies, analytics, upload endpoint, or persistent audio storage.
+Audio and LRC files, decoded buffers, parsed lyric lines, waveform peaks, and analysis data stay inside the current tab. Audiff has no backend, account system, database, cookies, analytics, upload endpoint, or persistent media storage. Hover or focus the shield in the header to see this privacy reminder in the app.
 
 ## Use
 
 1. Choose or drop one audio file.
-2. Press the central play button or `Space`.
-3. Optionally add Audio B for synchronized comparison.
-4. Use `1` / `A` for Audio A and `2` / `B` for Audio B.
-5. Drag the timeline to seek, or use the arrow keys to move five seconds.
-6. Scroll over Hiyori for manual camera zoom; choose **Director** to resume automatic framing.
-7. Press `F` for Focus mode and `Esc` to leave it.
-8. Choose **Clear session** to return through the reverse scene transition.
+2. Optionally choose **Add lyrics** or drop a `.lrc` file into the session.
+3. Press the central play button or `Space`.
+4. Optionally add Audio B for synchronized comparison.
+5. Use `1` / `A` for Audio A and `2` / `B` for Audio B.
+6. Drag the timeline to seek, or use the arrow keys to move five seconds.
+7. Scroll over Hiyori for manual camera zoom; choose **Director** to resume automatic framing.
+8. Press `F` for Focus mode and `Esc` to leave it.
+9. Choose **Clear session** to return through the reverse scene transition.
 
 ### Keyboard shortcuts
 
@@ -73,6 +82,10 @@ Audio files, decoded buffers, waveform peaks, and analysis data stay inside the 
 ## Supported audio
 
 Compatibility depends on the browser's Web Audio decoder. Audiff accepts common WAV, MP3, M4A/AAC, FLAC, OGG, Opus, WebM audio, and AIFF files. Files are fully decoded in memory so both tracks can share an exact clock; files larger than 300 MB are rejected to protect the tab.
+
+## Supported lyrics
+
+Audiff accepts timestamped `.lrc` files as an optional session-level lyric track shared by Audio A and B. Standard `[mm:ss.xx]` and `[mm:ss.xxx]` timestamps, multiple timestamps on one line, `[offset:]`, title/artist metadata, and same-time multilingual lines are supported. Text is decoded locally as UTF-8 or BOM-marked UTF-16LE/UTF-16BE.
 
 ## Local development
 
@@ -115,6 +128,7 @@ src/
   App.tsx                  Audio engine and complete interface
   Live2DStage.tsx          Hiyori motion, camera, shadow, and stage visuals
   audioVisual.ts           Web Audio features and transient signal
+  lrc.ts                   LRC decoding, metadata, offsets, and timed lines
   index.css                Responsive visual and motion system
 public/
   live2d/hiyori/           Official Hiyori model, motion, physics, and notice
@@ -122,7 +136,7 @@ public/
   og.png                   Current social preview
 docs/
   architecture.md          Runtime design and invariants
-  assets/                  README screenshots
+  assets/                  README screenshots, including the LRC preview
 tests/
   static-build.test.mjs    Build and architecture regressions
 .github/workflows/

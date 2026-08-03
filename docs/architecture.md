@@ -8,6 +8,7 @@ Audiff is a static React/Vite application. Audio decoding, analysis, playback, L
 Local File(s)
     │
     ├─ FileReader progress → Web Audio decode → AudioBuffer A/B
+    ├─ optional LRC → Unicode decode → timestamp/offset parser → lyric timeline
     │
     ├─ one shared AudioContext clock → synchronized BufferSource nodes
     │                                  └─ 18 ms A/B gain crossfade
@@ -20,7 +21,17 @@ Local File(s)
                     └─ phrase-scale automatic camera
 ```
 
-`src/App.tsx` owns files, decoded buffers, the shared playback clock, seeking, A/B gain switching, and the current interaction state. `src/audioVisual.ts` samples the analyser. `src/Live2DStage.tsx` consumes the latest features through a ref so the render loop does not require React state updates at 60 fps.
+`src/App.tsx` owns files, decoded buffers, the shared playback clock, seeking, A/B gain switching, timed lyric state, and the current interaction state. `src/lrc.ts` decodes and parses optional lyrics. `src/audioVisual.ts` samples the analyser. `src/Live2DStage.tsx` consumes the latest features through a ref so the render loop does not require React state updates at 60 fps.
+
+## Optional LRC timeline
+
+- One optional lyric timeline belongs to the listening session and remains synchronized when the user switches Audio A/B.
+- `src/lrc.ts` accepts UTF-8 plus BOM-marked UTF-16LE/UTF-16BE, parses centisecond or millisecond timestamps, applies `[offset:]`, expands repeated timestamps, and combines distinct same-time lines for bilingual lyrics.
+- React derives the active line from the same `currentTime` used by the waveform and playhead. The next timestamp defines the current line's fill progress.
+- Only the lyric viewport scrolls. Its active line is centered programmatically without moving the document.
+- The active fill uses the current source accent: green for A and rose for B. A registered CSS color property smooths the transition during track switching.
+- The font stack explicitly falls back through English, Simplified Chinese, Traditional Chinese, and Japanese system/CJK families.
+- LRC text is never uploaded or persisted; clearing the session removes the parsed timeline.
 
 ## Audio clock and A/B behavior
 
@@ -133,4 +144,4 @@ Run the complete suite with:
 npm run check
 ```
 
-The checks cover the portable build, synchronized audio clock, immediate pause signaling, Live2D parameter ownership, beat scheduling, camera separation, stage-light/shadow invariants, responsive collision rules, and the landing/player transition fallback.
+The checks cover the portable build, multilingual/offset/UTF-16 LRC parsing, synchronized audio clock, immediate pause signaling, Live2D parameter ownership, beat scheduling, camera separation, stage-light/shadow invariants, responsive collision rules, and the landing/player transition fallback.

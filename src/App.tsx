@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   FastForward,
   Headphones,
+  FileText,
   Music2,
   Maximize2,
   Minimize2,
@@ -30,6 +31,7 @@ import {
 import { flushSync } from "react-dom";
 import Live2DStage from "./Live2DStage";
 import { EMPTY_AUDIO_VISUAL, sampleAnalyser } from "./audioVisual";
+import { decodeLrc, LyricLine, parseLrc } from "./lrc";
 
 type SlotStatus = "empty" | "loading" | "ready" | "error";
 type LoadStage = "idle" | "reading" | "decoding";
@@ -44,6 +46,22 @@ type AudioSlot = {
   loadStage: LoadStage;
   loadProgress: number;
   error: string;
+};
+
+type LyricsState = {
+  fileName: string;
+  title: string;
+  artist: string;
+  lines: LyricLine[];
+  error: string;
+};
+
+const EMPTY_LYRICS: LyricsState = {
+  fileName: "",
+  title: "",
+  artist: "",
+  lines: [],
+  error: "",
 };
 
 const EMPTY_SLOT: AudioSlot = {
@@ -166,6 +184,53 @@ function Waveform({ peaks, label }: { peaks: number[]; label: string }) {
   );
 }
 
+function LyricsOverlay({ lyrics, currentTime, fileName, activeSource }: { lyrics: LyricLine[]; currentTime: number; fileName: string; activeSource: 0 | 1 }) {
+  const lineRefs = useRef<Array<HTMLParagraphElement | null>>([]);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  let activeIndex = -1;
+  for (let index = 0; index < lyrics.length; index += 1) {
+    if (lyrics[index].time <= currentTime + 0.03) activeIndex = index;
+    else break;
+  }
+  const activeLine = activeIndex >= 0 ? lyrics[activeIndex] : null;
+  const nextTime = activeIndex >= 0 ? lyrics[activeIndex + 1]?.time : lyrics[0]?.time;
+  const lineProgress = activeLine && nextTime && nextTime > activeLine.time
+    ? Math.min(100, Math.max(0, ((currentTime - activeLine.time) / (nextTime - activeLine.time)) * 100))
+    : activeLine ? 100 : 0;
+
+  useEffect(() => {
+    if (activeIndex < 0) return;
+    const viewport = viewportRef.current;
+    const line = lineRefs.current[activeIndex];
+    if (!viewport || !line) return;
+    viewport.scrollTo({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      top: line.offsetTop - viewport.clientHeight / 2 + line.offsetHeight / 2,
+    });
+  }, [activeIndex]);
+
+  return (
+    <aside className={`lyrics-overlay lyrics-source-${activeSource === 0 ? "a" : "b"}`} aria-label={`Lyrics from ${fileName}`}>
+      <div className="lyrics-kicker"><FileText size={13} /> Lyrics</div>
+      <div className="lyrics-viewport" ref={viewportRef}>
+        <div className="lyrics-list">
+          {lyrics.map((line, index) => (
+            <p
+              className={index === activeIndex ? "is-current" : index < activeIndex ? "is-past" : ""}
+              key={`${line.time}-${index}`}
+              ref={(node) => { lineRefs.current[index] = node; }}
+              aria-current={index === activeIndex ? "true" : undefined}
+              style={index === activeIndex ? { "--lyric-progress": `${lineProgress}%` } as React.CSSProperties : undefined}
+            >
+              {line.text.split("\n").map((part, partIndex) => <span key={partIndex}>{part}</span>)}
+            </p>
+          ))}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
 export default function Home() {
   const [slots, setSlots] = useState<[AudioSlot, AudioSlot]>([
     { ...EMPTY_SLOT },
@@ -182,6 +247,7 @@ export default function Home() {
   const loopRef = useRef(false);
   const [volume, setVolume] = useState(0.9);
   const [message, setMessage] = useState("");
+  const [lyrics, setLyrics] = useState<LyricsState>({ ...EMPTY_LYRICS });
   const [dragging, setDragging] = useState<0 | 1 | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [focusTransition, setFocusTransition] = useState<"enter" | "exit" | null>(null);
@@ -189,6 +255,7 @@ export default function Home() {
 
   const inputARef = useRef<HTMLInputElement>(null);
   const inputBRef = useRef<HTMLInputElement>(null);
+  const lyricsInputRef = useRef<HTMLInputElement>(null);
   const contextRef = useRef<AudioContext | null>(null);
   const gainARef = useRef<GainNode | null>(null);
   const gainBRef = useRef<GainNode | null>(null);
@@ -487,6 +554,33 @@ export default function Home() {
     setCurrentTime(0);
     applySourceGain(0);
     setMessage("");
+    setLyrics({ ...EMPTY_LYRICS });
+  }
+
+  async function loadLyricsFile(file: File) {
+    if (!/\.lrc$/iu.test(file.name)) {
+      setLyrics({ ...EMPTY_LYRICS, fileName: file.name, error: "Choose a .lrc lyrics file." });
+      return;
+    }
+    try {
+      const parsed = parseLrc(decodeLrc(await file.arrayBuffer()));
+      if (!parsed.lines.length) throw new Error("No timestamped lyric lines were found.");
+      setLyrics({ fileName: file.name, ...parsed, error: "" });
+      setMessage(`Lyrics loaded · ${parsed.lines.length} lines`);
+      window.setTimeout(() => setMessage(""), 1500);
+    } catch (error) {
+      setLyrics({
+        ...EMPTY_LYRICS,
+        fileName: file.name,
+        error: error instanceof Error ? error.message : "The lyrics file could not be read.",
+      });
+    }
+  }
+
+  function handleLyricsInput(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) void loadLyricsFile(file);
+    event.target.value = "";
   }
 
   async function loadFile(file: File, index: 0 | 1) {
@@ -629,8 +723,11 @@ export default function Home() {
     event.preventDefault();
     setDragging(null);
     const files = Array.from(event.dataTransfer.files);
-    if (files[0]) void loadFile(files[0], index);
-    if (files[1]) void loadFile(files[1], index === 0 ? 1 : 0);
+    const lyricFile = files.find((file) => /\.lrc$/iu.test(file.name));
+    const audioFiles = files.filter((file) => !/\.lrc$/iu.test(file.name));
+    if (lyricFile) void loadLyricsFile(lyricFile);
+    if (audioFiles[0]) void loadFile(audioFiles[0], index);
+    if (audioFiles[1]) void loadFile(audioFiles[1], index === 0 ? 1 : 0);
   }
 
   function handleDropKey(event: ReactKeyboardEvent<HTMLDivElement>, index: 0 | 1) {
@@ -866,6 +963,14 @@ export default function Home() {
         <div className="header-actions">
           {hasAnyTrack && (
             <>
+              <button className={`session-action-button lyrics-action ${lyrics.lines.length ? "has-lyrics" : ""}`} type="button" aria-label={lyrics.lines.length ? `Replace lyrics ${lyrics.fileName}` : "Add LRC lyrics"} onClick={() => lyricsInputRef.current?.click()}>
+                <FileText size={15} strokeWidth={1.7} /> {lyrics.lines.length ? "Replace lyrics" : "Add lyrics"}
+              </button>
+              {lyrics.lines.length > 0 && (
+                <button className="session-action-button lyrics-remove" type="button" aria-label={`Remove lyrics ${lyrics.fileName}`} onClick={() => setLyrics({ ...EMPTY_LYRICS })}>
+                  <X size={15} strokeWidth={1.7} /> Remove lyrics
+                </button>
+              )}
               <button className="session-action-button" type="button" aria-label="Clear both tracks" onClick={clearBothFiles}>
                 <Trash2 size={15} strokeWidth={1.7} /> Clear session
               </button>
@@ -880,7 +985,10 @@ export default function Home() {
               </button>
             </>
           )}
-          <div className="local-note"><ShieldCheck size={15} strokeWidth={1.7} /> Files stay on this device</div>
+          <button className="local-note" type="button" aria-label="Privacy information" aria-describedby="local-privacy-tooltip">
+            <ShieldCheck size={18} strokeWidth={1.7} />
+            <span className="local-note-tooltip" id="local-privacy-tooltip" role="tooltip">Files stay on this device</span>
+          </button>
         </div>
       </header>
 
@@ -898,6 +1006,13 @@ export default function Home() {
         accept="audio/*,.flac,.aiff,.aif"
         hidden
         onChange={(event) => handleInput(event, 1)}
+      />
+      <input
+        ref={lyricsInputRef}
+        type="file"
+        accept=".lrc,text/plain"
+        hidden
+        onChange={handleLyricsInput}
       />
 
       <section
@@ -936,6 +1051,10 @@ export default function Home() {
           focusMode={focusMode}
           onPickAudio={() => inputAt(0)?.click()}
         />
+
+        {hasAnyTrack && lyrics.lines.length > 0 && (
+          <LyricsOverlay lyrics={lyrics.lines} currentTime={currentTime} fileName={lyrics.fileName} activeSource={active} />
+        )}
 
         {!hasAnyTrack && (
           <>
@@ -1021,7 +1140,7 @@ export default function Home() {
           </div>
 
           <div className="player-status">
-            <span>{maxDuration ? (currentTime > slots[active].duration && slots[active].duration > 0 ? `${active === 0 ? "A" : "B"} has ended here — switch to hear the longer file` : message) : "Add one or two files to begin"}</span>
+            <span>{lyrics.error || (maxDuration ? (currentTime > slots[active].duration && slots[active].duration > 0 ? `${active === 0 ? "A" : "B"} has ended here — switch to hear the longer file` : message) : "Add one or two files to begin")}</span>
             <span className="sync-state"><span /> {bothReady ? "Synced continuously" : "Solo listening mode"}</span>
           </div>
         </div>
